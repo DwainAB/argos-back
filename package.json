@@ -8,7 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "test:railway-logs": "tsx scripts/test-railway-logs.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
