@@ -1,4 +1,17 @@
 import "dotenv/config";
+import fs from "node:fs";
+
+// La clé privée GitHub App peut être fournie directement (variable d'env, avec des \n
+// littéraux à la place des retours à la ligne) ou via un chemin vers le fichier .pem.
+function loadGithubPrivateKey(): string {
+  if (process.env.GITHUB_APP_PRIVATE_KEY) {
+    return process.env.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n");
+  }
+  if (process.env.GITHUB_APP_PRIVATE_KEY_PATH) {
+    return fs.readFileSync(process.env.GITHUB_APP_PRIVATE_KEY_PATH, "utf-8");
+  }
+  return "";
+}
 
 export const env = {
   port: Number(process.env.PORT ?? 4000),
@@ -14,5 +27,13 @@ export const env = {
     oauthClientSecret: process.env.RAILWAY_OAUTH_CLIENT_SECRET ?? "",
     oauthRedirectUri:
       process.env.RAILWAY_OAUTH_REDIRECT_URI ?? "http://localhost:4000/api/integrations/railway/callback",
+  },
+  github: {
+    appId: process.env.GITHUB_APP_ID ?? "",
+    clientId: process.env.GITHUB_APP_CLIENT_ID ?? "",
+    clientSecret: process.env.GITHUB_APP_CLIENT_SECRET ?? "",
+    slug: process.env.GITHUB_APP_SLUG ?? "",
+    redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
+    privateKey: loadGithubPrivateKey(),
   },
 };
