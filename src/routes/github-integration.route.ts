@@ -18,33 +18,42 @@ const TEMP_COOKIE_OPTIONS = {
   maxAge: 10 * 60 * 1000,
 };
 
-// GET /api/integrations/github/start
+// GET /api/integrations/github/start?projectId=...
 // Redirige l'utilisateur vers la page d'installation de la GitHub App Guardian AI.
-githubIntegrationRouter.get("/api/integrations/github/start", (_req, res) => {
-  const state = crypto.randomBytes(16).toString("hex");
-  res.cookie(STATE_COOKIE, state, TEMP_COOKIE_OPTIONS);
+// Le projectId cible est encodé dans le "state" pour être restitué après l'installation
+// (GitHub ne permet pas de le faire transiter autrement dans ce flux).
+githubIntegrationRouter.get("/api/integrations/github/start", (req, res) => {
+  const projectId = String(req.query.projectId ?? "");
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const state = `${nonce}.${projectId}`;
+
+  res.cookie(STATE_COOKIE, nonce, TEMP_COOKIE_OPTIONS);
   res.redirect(buildGithubInstallUrl(state));
 });
 
 // GET /api/integrations/github/callback
 // GitHub redirige ici une fois l'installation terminée, avec installation_id et setup_action.
-// On renvoie l'utilisateur vers le front avec l'installation_id en query param : c'est le
-// front qui affichera ensuite le choix du repo/branche à associer au projet.
+// On renvoie l'utilisateur vers la page des paramètres du projet concerné, avec
+// l'installation_id en query param pour que le front affiche le choix du repo/branche.
 githubIntegrationRouter.get("/api/integrations/github/callback", (req, res) => {
   const { installation_id, setup_action, state } = req.query;
 
-  const expectedState = req.cookies?.[STATE_COOKIE];
+  const expectedNonce = req.cookies?.[STATE_COOKIE];
   res.clearCookie(STATE_COOKIE);
 
+  const [nonce, projectId] = String(state ?? "").split(".");
+  const fallbackUrl = `${env.frontendUrl}/dashboard/projects`;
+  const targetUrl = projectId ? `${env.frontendUrl}/dashboard/projects/${projectId}/settings` : fallbackUrl;
+
   if (setup_action !== "install" || !installation_id) {
-    return res.redirect(`${env.frontendUrl}/dashboard/projects/new?github_error=installation_failed`);
+    return res.redirect(`${targetUrl}?github_error=installation_failed`);
   }
 
-  if (state && expectedState && state !== expectedState) {
-    return res.redirect(`${env.frontendUrl}/dashboard/projects/new?github_error=invalid_state`);
+  if (!nonce || nonce !== expectedNonce) {
+    return res.redirect(`${targetUrl}?github_error=invalid_state`);
   }
 
-  res.redirect(`${env.frontendUrl}/dashboard/projects/new?github_installation_id=${installation_id}`);
+  res.redirect(`${targetUrl}?github_installation_id=${installation_id}`);
 });
 
 // GET /api/integrations/github/repos?installationId=...
