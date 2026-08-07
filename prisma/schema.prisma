@@ -19,8 +19,13 @@ model User {
 model Project {
   id           String   @id @default(uuid())
   name         String
+  // Dépôt GitHub associé, au format "owner/repo".
   githubRepo   String?
   githubBranch String?
+  // Identifiant de l'installation GitHub App donnant accès à ce dépôt (voir
+  // backend/src/services/github-app.service.ts). Nécessaire pour ré-authentifier les
+  // appels à l'API GitHub (lecture de code, futures PR) après la connexion initiale.
+  githubInstallationId Int?
   createdAt    DateTime @default(now())
 
   // Connexion Railway (Project Token en attendant que l'OAuth "Login with Railway"

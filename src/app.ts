@@ -6,6 +6,7 @@ import { healthRouter } from "./routes/health.route";
 import { railwayIntegrationRouter } from "./routes/railway-integration.route";
 import { railwayProjectTokenRouter } from "./routes/railway-project-token.route";
 import { logsRouter } from "./routes/logs.route";
+import { githubIntegrationRouter } from "./routes/github-integration.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 
 // Construit l'application Express, sans la démarrer. Permet de la tester
@@ -21,6 +22,7 @@ export function createApp() {
   app.use(railwayIntegrationRouter);
   app.use(railwayProjectTokenRouter);
   app.use(logsRouter);
+  app.use(githubIntegrationRouter);
 
   app.use(notFoundMiddleware);
 
