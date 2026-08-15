@@ -57,6 +57,24 @@ export type RailwayLogEntry = {
   severity: string;
 };
 
+export type RailwayDeploymentSummary = {
+  id: string;
+  status: string;
+  createdAt: string;
+};
+
+// Récupère le dernier déploiement d'un service/environnement (statut + date), sans ses logs.
+export async function fetchLatestDeployment(
+  projectToken: string,
+  params: { serviceId: string; environmentId: string }
+): Promise<RailwayDeploymentSummary | null> {
+  const deploymentsData = await callRailwayApi<{
+    deployments: { edges: { node: RailwayDeploymentSummary }[] };
+  }>(projectToken, DEPLOYMENTS_QUERY, params);
+
+  return deploymentsData.deployments.edges[0]?.node ?? null;
+}
+
 // Récupère les logs du dernier déploiement d'un service/environnement, avec un Project Token.
 export async function fetchLatestDeploymentLogsWithProjectToken(
   projectToken: string,

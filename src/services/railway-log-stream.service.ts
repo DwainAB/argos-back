@@ -9,6 +9,7 @@
 import { createClient, type Client } from "graphql-ws";
 import WebSocket from "ws";
 import { prisma } from "../lib/prisma";
+import { processIncomingLog, type GroupedLog } from "./log-grouper.service";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -70,15 +71,16 @@ async function fetchLatestDeploymentId(
   return json.data.deployments.edges[0]?.node.id ?? null;
 }
 
-// Enregistre un log reçu en base, rattaché au projet Guardian AI concerné.
-async function persistLog(projectId: string, log: LiveLog) {
+// Enregistre en base un log déjà regroupé/classifié (voir log-grouper.service.ts).
+async function persistGroupedLog(projectId: string, log: GroupedLog) {
   await prisma.logEntry.create({
     data: {
       projectId,
-      rawMessage: log.message,
-      level: log.severity.toLowerCase(),
+      rawMessage: log.rawMessage,
+      level: log.level,
+      category: log.category,
       source: "railway",
-      externalTimestamp: new Date(log.timestamp),
+      externalTimestamp: log.externalTimestamp,
     },
   });
 }
@@ -137,9 +139,11 @@ export async function startLogStreamForProject(project: {
       next: (result) => {
         const logs = result.data?.deploymentLogs ?? [];
         for (const log of logs) {
-          persistLog(project.id, log).catch((err) =>
-            console.error(`Erreur d'enregistrement d'un log (projet ${project.id}) :`, err)
-          );
+          processIncomingLog(project.id, log, (groupedLog) => {
+            persistGroupedLog(project.id, groupedLog).catch((err) =>
+              console.error(`Erreur d'enregistrement d'un log (projet ${project.id}) :`, err)
+            );
+          });
         }
       },
       error: (err) => console.error(`Streaming Railway (projet ${project.id}) — erreur de subscription :`, err),

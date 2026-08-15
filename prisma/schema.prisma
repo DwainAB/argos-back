@@ -51,6 +51,13 @@ model LogEntry {
   aiSummary  String?  @db.Text
   createdAt  DateTime @default(now())
 
+  // Classification Guardian AI, distincte du "level" brut fourni par Railway.
+  // Calculée par des règles simples (voir backend/src/services/log-classifier.service.ts) ;
+  // vouée à être affinée par l'IA (Ollama) pour les cas ambigus dans une prochaine étape.
+  // Valeurs : "critical" (crash/panne), "warning" (dégradation), "benign" (erreur utilisateur
+  // normale, ex: validation), "info" (aucune action requise).
+  category String @default("info")
+
   // Identifiant du log tel que fourni par Railway (timestamp de log), utilisé pour éviter
   // d'enregistrer deux fois le même événement lors du polling/streaming.
   externalTimestamp DateTime?
