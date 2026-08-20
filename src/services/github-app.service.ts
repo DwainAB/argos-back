@@ -15,7 +15,9 @@ export function buildGithubInstallUrl(state: string) {
 
 // Client Octokit authentifié en tant qu'installation précise (accès aux repos que
 // l'utilisateur a choisi de partager avec la GitHub App lors de l'installation).
-function getInstallationOctokit(installationId: number) {
+// Exporté pour être réutilisé par les autres services ayant besoin de lire ces repos
+// (voir backend/src/services/github-repo-explorer.service.ts).
+export function getInstallationOctokit(installationId: number) {
   return new Octokit({
     authStrategy: createAppAuth,
     auth: {

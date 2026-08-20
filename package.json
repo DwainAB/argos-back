@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test:railway-logs": "tsx scripts/test-railway-logs.ts"
+    "test:railway-logs": "tsx scripts/test-railway-logs.ts",
+    "test:github-explorer": "tsx scripts/test-github-explorer.ts"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.3.0",
