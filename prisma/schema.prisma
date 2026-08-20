@@ -65,5 +65,35 @@ model LogEntry {
   projectId String
   project   Project @relation(fields: [projectId], references: [id])
 
+  alert Alert?
+
   @@index([projectId, createdAt])
+}
+
+// Alerte créée quand le triage local (voir backend/src/services/log-triage.service.ts)
+// confirme qu'un log "critical"/"warning" est un vrai problème (pas un faux positif).
+// Porte aussi le suivi de la demande de correction par IA distante, déclenchée à la
+// demande depuis la page de l'alerte (v2).
+model Alert {
+  id          String   @id @default(uuid())
+  explanation String   @db.Text
+  createdAt   DateTime @default(now())
+
+  // Statut du cycle de correction. "open" : pas encore de correction demandée.
+  // "fix_proposed" : l'IA distante a proposé un correctif, en attente de décision
+  // utilisateur. "fix_accepted" : l'utilisateur a validé, la pull request a été ouverte.
+  // "fix_rejected" : l'utilisateur a refusé, le correctif proposé reste affiché tel quel.
+  status String @default("open")
+
+  // Correctif proposé par l'IA distante (v2) : fichier concerné, contenu avant/après.
+  // Nuls tant qu'aucune correction n'a été demandée ou obtenue.
+  proposedFilePath String? @db.Text
+  proposedOldCode  String? @db.Text
+  proposedNewCode  String? @db.Text
+  pullRequestUrl   String?
+
+  logEntryId String   @unique
+  logEntry   LogEntry @relation(fields: [logEntryId], references: [id])
+
+  @@index([status])
 }

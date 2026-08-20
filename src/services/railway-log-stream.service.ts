@@ -10,6 +10,7 @@ import { createClient, type Client } from "graphql-ws";
 import WebSocket from "ws";
 import { prisma } from "../lib/prisma";
 import { processIncomingLog, type GroupedLog } from "./log-grouper.service";
+import { triageLog } from "./log-triage.service";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -71,9 +72,13 @@ async function fetchLatestDeploymentId(
   return json.data.deployments.edges[0]?.node.id ?? null;
 }
 
-// Enregistre en base un log déjà regroupé/classifié (voir log-grouper.service.ts).
-async function persistGroupedLog(projectId: string, log: GroupedLog) {
-  await prisma.logEntry.create({
+// Enregistre en base un log déjà regroupé/classifié (voir log-grouper.service.ts). Pour
+// un log "critical" ou "warning", déclenche ensuite le triage par l'IA locale en tâche de
+// fond (voir triageIncidentIfNeeded) — sans attendre sa réponse, pour ne jamais ralentir
+// le flux de logs entrant. Exportée pour être testable isolément (voir
+// scripts/test-log-ingestion.ts), sans dépendre d'une connexion Railway réelle.
+export async function persistGroupedLog(projectId: string, log: GroupedLog) {
+  const entry = await prisma.logEntry.create({
     data: {
       projectId,
       rawMessage: log.rawMessage,
@@ -83,6 +88,30 @@ async function persistGroupedLog(projectId: string, log: GroupedLog) {
       externalTimestamp: log.externalTimestamp,
     },
   });
+
+  if (log.category === "critical" || log.category === "warning") {
+    triageIncidentIfNeeded(entry.id, log).catch((err) =>
+      console.error(`Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`, err)
+    );
+  }
+}
+
+// Fait confirmer par l'IA locale qu'un log classé "critical"/"warning" par les règles est
+// un vrai problème, et crée l'Alerte correspondante si oui. Un faux positif n'est pas
+// supprimé : le LogEntry reste consultable dans l'historique, seule l'Alerte n'est pas créée.
+async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
+  const triage = await triageLog({ level: log.level, category: log.category, message: log.rawMessage });
+
+  await prisma.logEntry.update({
+    where: { id: logEntryId },
+    data: { aiSummary: triage.explanation },
+  });
+
+  if (triage.isRealIssue) {
+    await prisma.alert.create({
+      data: { logEntryId, explanation: triage.explanation },
+    });
+  }
 }
 
 // Un client WebSocket actif par projet Guardian AI surveillé.
