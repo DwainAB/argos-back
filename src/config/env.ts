@@ -36,4 +36,8 @@ export const env = {
     redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
     privateKey: loadGithubPrivateKey(),
   },
+  ollama: {
+    baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
+    model: process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b",
+  },
 };
