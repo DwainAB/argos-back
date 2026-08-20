@@ -10,19 +10,26 @@ const SYSTEM_PROMPT = `Tu es un assistant qui explique des logs d'application ba
 
 On te donne un log brut, avec son niveau. Rédige une explication courte (2-3 phrases) de ce que ce log signifie concrètement : ce qui s'est passé, dans quel contexte, et si c'est un signe normal ou préoccupant. Sans jargon inutile, sans supposition sur le code source que tu n'as pas vu.
 
-Réponds UNIQUEMENT avec un objet JSON de la forme :
-{"explanation": "..."}`;
+Réponds UNIQUEMENT avec le texte de l'explication, sans JSON, sans guillemets, sans préambule.`;
 
-// Interroge Ollama pour expliquer un log quelconque, à la demande. Un seul appel, contraint
-// au format JSON — pas de boucle, pas d'accès au code source.
-export async function explainLog(params: { level: string; message: string }): Promise<string> {
+// Interroge Ollama pour expliquer un log quelconque, à la demande, et streame les morceaux
+// de réponse au fur et à mesure via le callback `onChunk` — évite d'attendre la génération
+// complète avant de pouvoir afficher quoi que ce soit côté interface. Pas de contrainte de
+// format JSON ici (elle forçait Ollama à attendre la fin de la génération pour valider la
+// structure, ce qui empêchait tout streaming utile) : la sortie est du texte libre.
+// `keep_alive` maintient le modèle chargé en mémoire plus longtemps entre deux appels, pour
+// éviter un rechargement coûteux (plusieurs secondes) après une période d'inactivité.
+export async function explainLog(
+  params: { level: string; message: string },
+  onChunk?: (chunk: string) => void
+): Promise<string> {
   const response = await fetch(`${env.ollama.baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: env.ollama.model,
-      format: "json",
-      stream: false,
+      stream: true,
+      keep_alive: "30m",
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `Niveau : ${params.level}\nLog :\n\n${params.message}` },
@@ -30,21 +37,38 @@ export async function explainLog(params: { level: string; message: string }): Pr
     }),
   });
 
-  if (!response.ok) {
+  if (!response.ok || !response.body) {
     throw new Error(`Ollama a répondu avec le statut ${response.status}`);
   }
 
-  const data = (await response.json()) as { message?: { content?: string } };
-  const raw = data.message?.content ?? "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let full = "";
+  let buffer = "";
 
-  try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.explanation === "string") {
-      return parsed.explanation;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const parsed = JSON.parse(line) as { message?: { content?: string } };
+      const piece = parsed.message?.content ?? "";
+      if (piece) {
+        full += piece;
+        onChunk?.(piece);
+      }
     }
-  } catch {
-    // Réponse non exploitable : traité ci-dessous.
   }
 
-  throw new Error("Réponse de l'IA locale invalide ou vide.");
+  full = full.trim();
+  if (!full) {
+    throw new Error("Réponse de l'IA locale invalide ou vide.");
+  }
+
+  return full;
 }
