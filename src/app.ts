@@ -6,6 +6,7 @@ import { healthRouter } from "./routes/health.route";
 import { railwayIntegrationRouter } from "./routes/railway-integration.route";
 import { railwayProjectTokenRouter } from "./routes/railway-project-token.route";
 import { logsRouter } from "./routes/logs.route";
+import { alertsRouter } from "./routes/alerts.route";
 import { githubIntegrationRouter } from "./routes/github-integration.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 
@@ -22,6 +23,7 @@ export function createApp() {
   app.use(railwayIntegrationRouter);
   app.use(railwayProjectTokenRouter);
   app.use(logsRouter);
+  app.use(alertsRouter);
   app.use(githubIntegrationRouter);
 
   app.use(notFoundMiddleware);

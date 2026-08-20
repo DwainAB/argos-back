@@ -11,7 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "test:railway-logs": "tsx scripts/test-railway-logs.ts",
     "test:github-explorer": "tsx scripts/test-github-explorer.ts",
-    "test:log-triage": "tsx scripts/test-log-triage.ts"
+    "test:log-triage": "tsx scripts/test-log-triage.ts",
+    "test:log-ingestion": "tsx scripts/test-log-ingestion.ts"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.3.0",
