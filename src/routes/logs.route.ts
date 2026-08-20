@@ -1,8 +1,52 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { fetchLatestDeployment } from "../services/railway-project-token.service";
+import { explainLog } from "../services/log-explanation.service";
 
 export const logsRouter = Router();
+
+// POST /api/logs/:logEntryId/explain
+// Explique un log en langage clair, à la demande (bouton "Explication" sur un log dans
+// l'interface). Si une explication existe déjà (aiSummary, remplie automatiquement pour
+// les logs critical/warning par le triage, voir log-triage.service.ts), elle est
+// renvoyée telle quelle sans rappeler l'IA (réponse JSON classique, immédiate). Sinon,
+// l'IA locale est interrogée et streamée au client au fil du texte généré (réponse
+// chunked en texte brut, pas de JSON) pour que l'explication s'affiche progressivement
+// au lieu d'attendre la fin de la génération. Le résultat complet est sauvegardé sur le
+// log une fois le stream terminé, pour les prochaines consultations.
+logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
+  const { logEntryId } = req.params;
+
+  try {
+    const logEntry = await prisma.logEntry.findUnique({ where: { id: logEntryId } });
+
+    if (!logEntry) {
+      return res.status(404).json({ error: "Log introuvable." });
+    }
+
+    if (logEntry.aiSummary) {
+      return res.json({ explanation: logEntry.aiSummary, cached: true });
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+
+    const explanation = await explainLog({ level: logEntry.level, message: logEntry.rawMessage }, (chunk) => {
+      res.write(chunk);
+    });
+
+    await prisma.logEntry.update({ where: { id: logEntryId }, data: { aiSummary: explanation } });
+
+    res.end();
+  } catch (err) {
+    console.error(`Erreur lors de l'explication du log ${logEntryId} :`, err);
+    if (res.headersSent) {
+      res.end();
+    } else {
+      res.status(502).json({ error: "Impossible d'obtenir une explication pour ce log." });
+    }
+  }
+});
 
 // GET /api/projects/:projectId/logs
 // Renvoie les logs stockés en base pour un projet, du plus récent au plus ancien.
