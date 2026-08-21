@@ -19,7 +19,7 @@ const TEMP_COOKIE_OPTIONS = {
 };
 
 // GET /api/integrations/github/start?projectId=...&returnPath=...
-// Redirige l'utilisateur vers la page d'installation de la GitHub App Guardian AI.
+// Redirige l'utilisateur vers la page d'installation de la GitHub App Argos AI.
 // Le projectId cible et le chemin de retour souhaité (ex: /dashboard/projects/new ou
 // /dashboard/projects/:id/settings) sont encodés dans le "state" pour être restitués
 // après l'installation (GitHub ne permet pas de les faire transiter autrement).
@@ -99,7 +99,7 @@ githubIntegrationRouter.get("/api/integrations/github/branches", async (req, res
 });
 
 // POST /api/projects/:projectId/github
-// Associe un dépôt GitHub (et sa branche) à un projet Guardian AI existant.
+// Associe un dépôt GitHub (et sa branche) à un projet Argos AI existant.
 githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res) => {
   const { projectId } = req.params;
   const { installationId, repoFullName, branch } = req.body ?? {};

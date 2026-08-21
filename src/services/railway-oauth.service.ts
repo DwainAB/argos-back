@@ -28,7 +28,7 @@ export function generatePkcePair() {
   return { codeVerifier, codeChallenge };
 }
 
-// Construit l'URL vers laquelle rediriger l'utilisateur pour qu'il autorise Guardian AI
+// Construit l'URL vers laquelle rediriger l'utilisateur pour qu'il autorise Argos AI
 // à accéder à son compte Railway.
 export function buildRailwayAuthorizeUrl(params: { state: string; codeChallenge: string }) {
   const url = new URL(RAILWAY_AUTHORIZE_URL);

@@ -70,7 +70,7 @@ railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, r
     });
 
     // TODO : persister en base, rattaché à l'utilisateur connecté, une fois
-    // l'authentification Guardian AI en place. Pour l'instant, stockage en mémoire
+    // l'authentification Argos AI en place. Pour l'instant, stockage en mémoire
     // (voir railway-token-store.service.ts) le temps de valider le flux de bout en bout.
     storeRailwayToken(token);
 

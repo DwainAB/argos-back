@@ -6,7 +6,7 @@ import { stopAllLogStreams } from "./services/railway-log-stream.service";
 const app = createApp();
 
 app.listen(env.port, () => {
-  console.log(`Guardian AI backend listening on port ${env.port}`);
+  console.log(`Argos AI backend listening on port ${env.port}`);
   bootstrapRailwayLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Railway :", err));
 });
 

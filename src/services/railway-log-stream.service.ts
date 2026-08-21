@@ -114,10 +114,10 @@ async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
   }
 }
 
-// Un client WebSocket actif par projet Guardian AI surveillé.
+// Un client WebSocket actif par projet Argos AI surveillé.
 const activeClients = new Map<string, Client>();
 
-// Démarre (ou redémarre) le streaming des logs pour un projet Guardian AI donné.
+// Démarre (ou redémarre) le streaming des logs pour un projet Argos AI donné.
 export async function startLogStreamForProject(project: {
   id: string;
   railwayProjectToken: string;

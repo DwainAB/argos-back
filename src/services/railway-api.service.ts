@@ -75,7 +75,7 @@ export type RailwayProjectSummary = {
   environments: { id: string; name: string }[];
 };
 
-// Liste les projets accessibles par l'utilisateur ayant autorisé Guardian AI.
+// Liste les projets accessibles par l'utilisateur ayant autorisé Argos AI.
 // Avec un token OAuth (scope project:viewer), ne renvoie que les projets explicitement
 // sélectionnés par l'utilisateur lors de l'écran de consentement.
 export async function fetchAccessibleProjects(accessToken: string): Promise<RailwayProjectSummary[]> {

@@ -25,7 +25,7 @@ export async function createFixPullRequest(params: CreateFixPullRequestParams): 
 
   // Nom de branche unique pour éviter toute collision si une correction est demandée
   // plusieurs fois sur le même fichier.
-  const branchName = `guardian-ai/fix-${Date.now()}`;
+  const branchName = `argos-ai/fix-${Date.now()}`;
 
   const { data: baseRef } = await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
   await octokit.rest.git.createRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: baseRef.object.sha });
