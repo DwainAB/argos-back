@@ -40,4 +40,11 @@ export const env = {
     baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
     model: process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b",
   },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    // Modèle utilisé pour la correction (exploration du repo + proposition de diff, voir
+    // backend/src/services/fix-suggestion.service.ts) : nécessite un bon niveau en code et
+    // un tool calling fiable, contrairement au modèle local (voir JOURNAL.md).
+    model: process.env.OPENAI_MODEL ?? "gpt-4.1",
+  },
 };
