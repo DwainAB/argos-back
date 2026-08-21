@@ -130,3 +130,35 @@ logsRouter.get("/api/projects", async (_req, res) => {
     res.status(500).json({ error: "Impossible de récupérer les projets." });
   }
 });
+
+// PATCH /api/projects/:projectId
+// Met à jour les informations générales d'un projet (pour l'instant, uniquement le nom).
+logsRouter.patch("/api/projects/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+  const { name } = req.body;
+
+  if (typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ error: "Le nom du projet est requis." });
+  }
+
+  try {
+    const project = await prisma.project.update({
+      where: { id: projectId },
+      data: { name: name.trim() },
+      select: {
+        id: true,
+        name: true,
+        githubRepo: true,
+        githubBranch: true,
+        createdAt: true,
+        railwayServiceId: true,
+        railwayEnvironmentId: true,
+      },
+    });
+
+    res.json({ project });
+  } catch (err) {
+    console.error(`Erreur lors de la mise à jour du projet ${projectId} :`, err);
+    res.status(500).json({ error: "Impossible de mettre à jour le projet." });
+  }
+});
