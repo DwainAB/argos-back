@@ -8,12 +8,18 @@ export const alertsRouter = Router();
 // GET /api/projects/:projectId/alerts
 // Liste les alertes d'un projet (logs confirmés comme de vrais problèmes par le triage
 // IA, voir backend/src/services/log-triage.service.ts), du plus récent au plus ancien.
+// Par défaut, ne renvoie que les alertes non traitées ; ?resolved=true renvoie l'historique
+// des alertes marquées traitées (voir POST /api/alerts/:alertId/resolve).
 alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const { projectId } = req.params;
+  const resolved = req.query.resolved === "true";
 
   try {
     const alerts = await prisma.alert.findMany({
-      where: { logEntry: { projectId } },
+      where: {
+        logEntry: { projectId },
+        resolvedAt: resolved ? { not: null } : null,
+      },
       include: { logEntry: true },
       orderBy: { createdAt: "desc" },
     });
@@ -44,6 +50,57 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
   } catch (err) {
     console.error(`Erreur lors de la récupération de l'alerte ${alertId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer l'alerte." });
+  }
+});
+
+// POST /api/alerts/:alertId/resolve
+// Marque l'alerte comme traitée par l'utilisateur, depuis sa page de détail. Indépendant
+// du statut de correctif : une alerte peut être traitée avec ou sans correctif proposé.
+alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
+  const { alertId } = req.params;
+
+  try {
+    const alert = await prisma.alert.findUnique({ where: { id: alertId } });
+
+    if (!alert) {
+      return res.status(404).json({ error: "Alerte introuvable." });
+    }
+
+    const updated = await prisma.alert.update({
+      where: { id: alertId },
+      data: { resolvedAt: new Date() },
+      include: { logEntry: true },
+    });
+
+    res.json({ alert: updated });
+  } catch (err) {
+    console.error(`Erreur lors du marquage comme traitée de l'alerte ${alertId} :`, err);
+    res.status(500).json({ error: "Impossible de marquer cette alerte comme traitée." });
+  }
+});
+
+// POST /api/alerts/:alertId/reopen
+// Annule le marquage "traitée" : remet l'alerte parmi les alertes actives.
+alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
+  const { alertId } = req.params;
+
+  try {
+    const alert = await prisma.alert.findUnique({ where: { id: alertId } });
+
+    if (!alert) {
+      return res.status(404).json({ error: "Alerte introuvable." });
+    }
+
+    const updated = await prisma.alert.update({
+      where: { id: alertId },
+      data: { resolvedAt: null },
+      include: { logEntry: true },
+    });
+
+    res.json({ alert: updated });
+  } catch (err) {
+    console.error(`Erreur lors de la réouverture de l'alerte ${alertId} :`, err);
+    res.status(500).json({ error: "Impossible de rouvrir cette alerte." });
   }
 });
 
