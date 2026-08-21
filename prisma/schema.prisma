@@ -85,6 +85,11 @@ model Alert {
   // "fix_rejected" : l'utilisateur a refusé, le correctif proposé reste affiché tel quel.
   status String @default("open")
 
+  // Date à laquelle l'utilisateur a marqué cette alerte comme traitée depuis sa page de
+  // détail. Nul tant que l'alerte est encore active. Distinct de "status" : une alerte peut
+  // être marquée traitée qu'un correctif ait été proposé ou non.
+  resolvedAt DateTime?
+
   // Correctif proposé par l'IA distante (v2) : fichier concerné, contenu avant/après.
   // Nuls tant qu'aucune correction n'a été demandée ou obtenue.
   proposedFilePath String? @db.Text
