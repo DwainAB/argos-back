@@ -89,6 +89,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
         proposedOldCode: suggestion.oldCode,
         proposedNewCode: suggestion.newCode,
       },
+      include: { logEntry: true },
     });
 
     res.json({ alert: updated, explanation: suggestion.explanation });
@@ -137,6 +138,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
     const updated = await prisma.alert.update({
       where: { id: alertId },
       data: { status: "fix_accepted", pullRequestUrl },
+      include: { logEntry: true },
     });
 
     res.json({ alert: updated });
@@ -163,7 +165,11 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
       return res.status(422).json({ error: "Aucun correctif proposé en attente pour cette alerte." });
     }
 
-    const updated = await prisma.alert.update({ where: { id: alertId }, data: { status: "fix_rejected" } });
+    const updated = await prisma.alert.update({
+      where: { id: alertId },
+      data: { status: "fix_rejected" },
+      include: { logEntry: true },
+    });
 
     res.json({ alert: updated });
   } catch (err) {
