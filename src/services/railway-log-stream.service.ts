@@ -103,10 +103,15 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
 // celle décidée par l'IA — ex: un warning qui n'est qu'une simple information repasse "info".
 async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
   const triage = await triageLog({ level: log.level, category: log.category, message: log.rawMessage });
+  const wasReclassified = triage.finalCategory !== log.category;
 
   await prisma.logEntry.update({
     where: { id: logEntryId },
-    data: { aiSummary: triage.explanation, category: triage.finalCategory },
+    data: {
+      aiSummary: triage.explanation,
+      category: triage.finalCategory,
+      originalCategory: wasReclassified ? log.category : null,
+    },
   });
 
   if (triage.isRealIssue) {
