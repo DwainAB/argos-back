@@ -99,12 +99,14 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
 // Fait confirmer par l'IA locale qu'un log classé "critical"/"warning" par les règles est
 // un vrai problème, et crée l'Alerte correspondante si oui. Un faux positif n'est pas
 // supprimé : le LogEntry reste consultable dans l'historique, seule l'Alerte n'est pas créée.
+// La catégorie initiale (posée par les règles, volontairement prudentes) est corrigée par
+// celle décidée par l'IA — ex: un warning qui n'est qu'une simple information repasse "info".
 async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
   const triage = await triageLog({ level: log.level, category: log.category, message: log.rawMessage });
 
   await prisma.logEntry.update({
     where: { id: logEntryId },
-    data: { aiSummary: triage.explanation },
+    data: { aiSummary: triage.explanation, category: triage.finalCategory },
   });
 
   if (triage.isRealIssue) {

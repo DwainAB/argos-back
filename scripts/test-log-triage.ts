@@ -26,6 +26,7 @@ async function main() {
     console.log(`Log : ${testCase.message}`);
     const result = await triageLog(testCase);
     console.log(`isRealIssue : ${result.isRealIssue}`);
+    console.log(`Catégorie finale : ${result.finalCategory}`);
     console.log(`Explication : ${result.explanation}`);
   }
 }
