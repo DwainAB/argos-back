@@ -78,6 +78,8 @@ async function fetchLatestDeploymentId(
 // le flux de logs entrant. Exportée pour être testable isolément (voir
 // scripts/test-log-ingestion.ts), sans dépendre d'une connexion Railway réelle.
 export async function persistGroupedLog(projectId: string, log: GroupedLog) {
+  const needsTriage = log.category === "critical" || log.category === "warning";
+
   const entry = await prisma.logEntry.create({
     data: {
       projectId,
@@ -86,13 +88,19 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
       category: log.category,
       source: "railway",
       externalTimestamp: log.externalTimestamp,
+      triageStatus: needsTriage ? "pending" : "none",
     },
   });
 
-  if (log.category === "critical" || log.category === "warning") {
-    triageIncidentIfNeeded(entry.id, log).catch((err) =>
-      console.error(`Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`, err)
-    );
+  if (needsTriage) {
+    triageIncidentIfNeeded(entry.id, log).catch(async (err) => {
+      console.error(`Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`, err);
+      // Sans ça, le log resterait affiché "en cours de vérification" indéfiniment côté
+      // interface si Ollama est injoignable ou plante en cours de route.
+      await prisma.logEntry
+        .update({ where: { id: entry.id }, data: { triageStatus: "done" } })
+        .catch(() => {});
+    });
   }
 }
 
@@ -101,7 +109,11 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
 // supprimé : le LogEntry reste consultable dans l'historique, seule l'Alerte n'est pas créée.
 // La catégorie initiale (posée par les règles, volontairement prudentes) est corrigée par
 // celle décidée par l'IA — ex: un warning qui n'est qu'une simple information repasse "info".
+// triageStatus trace la progression (pending → checking → done) pour que l'interface puisse
+// montrer qu'un log n'a pas été oublié pendant que l'appel à Ollama est en cours.
 async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
+  await prisma.logEntry.update({ where: { id: logEntryId }, data: { triageStatus: "checking" } });
+
   const triage = await triageLog({ level: log.level, category: log.category, message: log.rawMessage });
   const wasReclassified = triage.finalCategory !== log.category;
 
@@ -111,6 +123,7 @@ async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
       aiSummary: triage.explanation,
       category: triage.finalCategory,
       originalCategory: wasReclassified ? log.category : null,
+      triageStatus: "done",
     },
   });
 

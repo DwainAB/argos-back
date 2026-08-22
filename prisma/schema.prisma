@@ -58,6 +58,13 @@ model LogEntry {
   // normale, ex: validation), "info" (aucune action requise).
   category String @default("info")
 
+  // État du triage par l'IA locale pour ce log. "none" : log non concerné (catégorie
+  // initiale "info" ou "benign", jamais soumis au triage). "pending" : classé
+  // "critical"/"warning" par les règles, en attente du lancement de l'appel IA.
+  // "checking" : l'appel à Ollama est en cours. "done" : triage terminé (isRealIssue tranché,
+  // category éventuellement corrigée). Permet d'afficher qu'un log n'a pas été oublié.
+  triageStatus String @default("none")
+
   // Catégorie posée par les règles avant reclassification par le triage IA (voir
   // log-triage.service.ts). Nul tant que le log n'a pas été reclassifié — donc null la
   // plupart du temps (logs "info" jamais triés, ou logs triés que l'IA a confirmés tels
