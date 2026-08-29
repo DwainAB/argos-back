@@ -18,7 +18,9 @@ logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
   const { logEntryId } = req.params;
 
   try {
-    const logEntry = await prisma.logEntry.findUnique({ where: { id: logEntryId } });
+    const logEntry = await prisma.logEntry.findFirst({
+      where: { id: logEntryId, project: { userId: req.userId } },
+    });
 
     if (!logEntry) {
       return res.status(404).json({ error: "Log introuvable." });
@@ -55,6 +57,12 @@ logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
 
   try {
+    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+
+    if (!project) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
     const logs = await prisma.logEntry.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" },
@@ -75,7 +83,7 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   const { projectId } = req.params;
 
   try {
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -108,10 +116,11 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
 });
 
 // GET /api/projects
-// Liste les projets connectés (utilisateur de test unique pour l'instant).
-logsRouter.get("/api/projects", async (_req, res) => {
+// Liste les projets connectés appartenant à l'utilisateur courant.
+logsRouter.get("/api/projects", async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
+      where: { userId: req.userId },
       select: {
         id: true,
         name: true,
@@ -142,6 +151,12 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
   }
 
   try {
+    const existing = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
     const project = await prisma.project.update({
       where: { id: projectId },
       data: { name: name.trim() },

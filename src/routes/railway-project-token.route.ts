@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { getOrCreateDefaultUser } from "../services/default-user.service";
 import { fetchLatestDeploymentLogsWithProjectToken } from "../services/railway-project-token.service";
 import { startLogStreamForProject } from "../services/railway-log-stream.service";
 
@@ -21,15 +20,13 @@ railwayProjectTokenRouter.post("/api/integrations/railway/connect-with-token", a
   try {
     const logs = await fetchLatestDeploymentLogsWithProjectToken(projectToken, { serviceId, environmentId });
 
-    const user = await getOrCreateDefaultUser();
-
     const project = await prisma.project.create({
       data: {
         name: projectName || "Projet Railway sans nom",
         railwayProjectToken: projectToken,
         railwayServiceId: serviceId,
         railwayEnvironmentId: environmentId,
-        userId: user.id,
+        userId: req.userId as string,
       },
     });
 

@@ -109,6 +109,12 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
   }
 
   try {
+    const existing = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
     const project = await prisma.project.update({
       where: { id: projectId },
       data: {

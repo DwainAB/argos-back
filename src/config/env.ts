@@ -17,6 +17,12 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
   databaseUrl: process.env.DATABASE_URL ?? "",
+  auth: {
+    // Secret de signature des JWT de session (cookie httpOnly). Une valeur de repli est
+    // fournie pour ne pas casser le démarrage en dev si elle est oubliée, mais elle doit
+    // impérativement être définie en production.
+    jwtSecret: process.env.JWT_SECRET ?? "dev-secret-a-ne-jamais-utiliser-en-production",
+  },
   railway: {
     // Project Token de test, utilisé par scripts/test-railway-logs.ts.
     projectToken: process.env.RAILWAY_PROJECT_TOKEN ?? "",
