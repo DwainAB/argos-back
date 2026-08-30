@@ -8,7 +8,7 @@ import { railwayIntegrationRouter } from "./routes/railway-integration.route";
 import { railwayProjectTokenRouter } from "./routes/railway-project-token.route";
 import { logsRouter } from "./routes/logs.route";
 import { alertsRouter } from "./routes/alerts.route";
-import { githubIntegrationRouter } from "./routes/github-integration.route";
+import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -25,6 +25,11 @@ export function createApp() {
   // Routes d'authentification : /signup et /login doivent rester accessibles sans
   // session ; /me applique elle-même authMiddleware (voir auth.route.ts).
   app.use(authRouter);
+  // /start et /callback GitHub : appelées par navigation directe du navigateur (popup,
+  // redirection depuis github.com), pas par un fetch avec le cookie de session
+  // applicatif — doivent rester accessibles sans authMiddleware (voir leur commentaire
+  // dans github-integration.route.ts).
+  app.use(githubPublicRouter);
 
   // Tout ce qui suit nécessite une session valide (req.userId), chaque route filtrant
   // ensuite ses propres ressources par utilisateur.
