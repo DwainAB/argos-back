@@ -15,6 +15,12 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const resolved = req.query.resolved === "true";
 
   try {
+    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+
+    if (!project) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
     const alerts = await prisma.alert.findMany({
       where: {
         logEntry: { projectId },
@@ -37,8 +43,8 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({
-      where: { id: alertId },
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
       include: { logEntry: true },
     });
 
@@ -60,7 +66,9 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({ where: { id: alertId } });
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+    });
 
     if (!alert) {
       return res.status(404).json({ error: "Alerte introuvable." });
@@ -85,7 +93,9 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({ where: { id: alertId } });
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+    });
 
     if (!alert) {
       return res.status(404).json({ error: "Alerte introuvable." });
@@ -112,7 +122,10 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({ where: { id: alertId }, include: { logEntry: { include: { project: true } } } });
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      include: { logEntry: { include: { project: true } } },
+    });
 
     if (!alert) {
       return res.status(404).json({ error: "Alerte introuvable." });
@@ -163,7 +176,10 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({ where: { id: alertId }, include: { logEntry: { include: { project: true } } } });
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      include: { logEntry: { include: { project: true } } },
+    });
 
     if (!alert) {
       return res.status(404).json({ error: "Alerte introuvable." });
@@ -212,7 +228,9 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
   const { alertId } = req.params;
 
   try {
-    const alert = await prisma.alert.findUnique({ where: { id: alertId } });
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+    });
 
     if (!alert) {
       return res.status(404).json({ error: "Alerte introuvable." });
