@@ -16,7 +16,18 @@ model User {
   phone        String?
   createdAt    DateTime @default(now())
 
+  // "personal" (compte solo, par défaut) ou "organization" — déterminé une seule fois à
+  // l'inscription, jamais modifié ensuite (pas de bascule solo ↔ organisation, contrairement
+  // à un essai précédent qui envisageait la coexistence des deux — abandonné, voir JOURNAL.md).
+  accountType      String  @default("personal")
+  // Renseigné uniquement pour un compte "organization" ; nul pour un compte personnel.
+  organizationName String?
+
   projects Project[]
+
+  // Projets d'un compte "organization" partagés avec ce compte (forcément "personal") — voir
+  // ProjectShare. Un compte organisation ne peut jamais être destinataire d'un partage.
+  receivedProjectShares ProjectShare[]
 }
 
 model Project {
@@ -41,9 +52,33 @@ model Project {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  logs LogEntry[]
+  logs   LogEntry[]
+  shares ProjectShare[]
 
   @@index([userId])
+}
+
+// Partage d'un projet d'un compte organisation avec un compte personnel, par email —
+// jamais une adhésion à toute l'organisation, un accès à ce seul projet. Le compte
+// personnel bénéficiaire voit ce projet apparaître dans sa propre liste de projets, en
+// plus des siens, et le manipule normalement (logs, alertes, paramètres).
+model ProjectShare {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id])
+
+  // Email de la personne avec qui le projet est partagé. sharedWithUserId reste nul tant
+  // que personne ne s'est inscrit avec cet email en compte personnel — l'accès s'active
+  // automatiquement à l'inscription (voir backend/src/services/auth.service.ts::signup).
+  email            String
+  sharedWithUserId String?
+  sharedWithUser   User?   @relation(fields: [sharedWithUserId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, email])
+  @@index([sharedWithUserId])
+  @@index([email])
 }
 
 model LogEntry {

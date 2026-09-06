@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { suggestFix } from "../services/fix-suggestion.service";
 import { createFixPullRequest } from "../services/github-pr.service";
+import { projectAccessFilter } from "../services/project-access.service";
 
 export const alertsRouter = Router();
 
@@ -15,7 +16,7 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const resolved = req.query.resolved === "true";
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -44,7 +45,7 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
       include: { logEntry: true },
     });
 
@@ -67,7 +68,7 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {
@@ -94,7 +95,7 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {
@@ -123,7 +124,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
       include: { logEntry: { include: { project: true } } },
     });
 
@@ -177,7 +178,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
       include: { logEntry: { include: { project: true } } },
     });
 
@@ -229,7 +230,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: { userId: req.userId } } },
+      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {

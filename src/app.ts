@@ -9,6 +9,7 @@ import { railwayProjectTokenRouter } from "./routes/railway-project-token.route"
 import { logsRouter } from "./routes/logs.route";
 import { alertsRouter } from "./routes/alerts.route";
 import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
+import { projectSharesRouter } from "./routes/project-shares.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -39,6 +40,7 @@ export function createApp() {
   app.use(logsRouter);
   app.use(alertsRouter);
   app.use(githubIntegrationRouter);
+  app.use(projectSharesRouter);
 
   app.use(notFoundMiddleware);
 

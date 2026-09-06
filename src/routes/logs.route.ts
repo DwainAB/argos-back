@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { fetchLatestDeployment } from "../services/railway-project-token.service";
 import { explainLog } from "../services/log-explanation.service";
+import { projectAccessFilter } from "../services/project-access.service";
 
 export const logsRouter = Router();
 
@@ -19,7 +20,7 @@ logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
 
   try {
     const logEntry = await prisma.logEntry.findFirst({
-      where: { id: logEntryId, project: { userId: req.userId } },
+      where: { id: logEntryId, project: projectAccessFilter(req.userId as string) },
     });
 
     if (!logEntry) {
@@ -57,7 +58,7 @@ logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -83,7 +84,7 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   const { projectId } = req.params;
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -116,11 +117,15 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
 });
 
 // GET /api/projects
-// Liste les projets connectés appartenant à l'utilisateur courant.
+// Liste les projets appartenant à l'utilisateur courant, plus ceux partagés avec lui
+// (voir ProjectShare) — un compte organisation peut partager un projet précis avec un
+// compte personnel, qui le voit alors apparaître ici mélangé à ses propres projets.
+// Inclut le propriétaire (type de compte + nom d'organisation) pour que le front puisse
+// grouper l'affichage par section "Personnel" / nom de l'organisation.
 logsRouter.get("/api/projects", async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
-      where: { userId: req.userId },
+      where: projectAccessFilter(req.userId as string),
       select: {
         id: true,
         name: true,
@@ -129,6 +134,7 @@ logsRouter.get("/api/projects", async (req, res) => {
         createdAt: true,
         railwayServiceId: true,
         railwayEnvironmentId: true,
+        user: { select: { accountType: true, organizationName: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -151,7 +157,7 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
   }
 
   try {
-    const existing = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+    const existing = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
 
     if (!existing) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -168,6 +174,7 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
         createdAt: true,
         railwayServiceId: true,
         railwayEnvironmentId: true,
+        user: { select: { accountType: true, organizationName: true } },
       },
     });
 

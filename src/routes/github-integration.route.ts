@@ -8,6 +8,7 @@ import {
   listInstallationRepos,
   listRepoBranches,
 } from "../services/github-app.service";
+import { projectAccessFilter } from "../services/project-access.service";
 
 // Routes /start et /callback à part : elles sont accessibles sans authMiddleware (voir
 // app.ts) car appelées par une navigation directe du navigateur (popup ouvert via
@@ -145,7 +146,7 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
   }
 
   try {
-    const existing = await prisma.project.findFirst({ where: { id: projectId, userId: req.userId } });
+    const existing = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
 
     if (!existing) {
       return res.status(404).json({ error: "Projet introuvable." });
