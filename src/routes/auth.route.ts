@@ -16,13 +16,24 @@ const SESSION_COOKIE_OPTIONS = {
 };
 
 // Champs de l'utilisateur renvoyés au client : jamais passwordHash.
-function toPublicUser(user: { id: string; email: string; firstName: string; lastName: string; phone: string | null; createdAt: Date }) {
+function toPublicUser(user: {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  accountType: string;
+  organizationName: string | null;
+  createdAt: Date;
+}) {
   return {
     id: user.id,
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
     phone: user.phone,
+    accountType: user.accountType,
+    organizationName: user.organizationName,
     createdAt: user.createdAt,
   };
 }

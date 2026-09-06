@@ -41,6 +41,12 @@ function assertNonEmpty(value: unknown, fieldLabel: string): asserts value is st
   }
 }
 
+function assertValidAccountType(accountType: unknown): asserts accountType is "personal" | "organization" {
+  if (accountType !== "personal" && accountType !== "organization") {
+    throw new AuthError("Type de compte invalide.", 400);
+  }
+}
+
 export function hashPassword(password: string) {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
@@ -68,13 +74,28 @@ export function verifyAuthToken(token: string): string | null {
 
 // Crée un compte utilisateur après validation des champs et vérification de l'unicité de
 // l'email. Lève une AuthError (avec statusCode) en cas de champ invalide ou d'email déjà pris.
-export async function signup(input: { email: unknown; password: unknown; firstName: unknown; lastName: unknown }) {
-  const { email, password, firstName, lastName } = input;
+// accountType est définitif : pas de bascule solo ↔ organisation ensuite. Pour un compte
+// "personal", rattache automatiquement les partages de projet déjà en attente pour cet
+// email (voir ProjectShare et project-share.service.ts) — l'accès s'active tout seul.
+export async function signup(input: {
+  email: unknown;
+  password: unknown;
+  firstName: unknown;
+  lastName: unknown;
+  accountType: unknown;
+  organizationName: unknown;
+}) {
+  const { email, password, firstName, lastName, accountType, organizationName } = input;
 
   assertValidEmail(email);
   assertValidPassword(password);
   assertNonEmpty(firstName, "Le prénom");
   assertNonEmpty(lastName, "Le nom");
+  assertValidAccountType(accountType);
+
+  if (accountType === "organization") {
+    assertNonEmpty(organizationName, "Le nom de l'organisation");
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -85,13 +106,26 @@ export async function signup(input: { email: unknown; password: unknown; firstNa
 
   const passwordHash = await hashPassword(password);
 
-  return prisma.user.create({
-    data: {
-      email: normalizedEmail,
-      passwordHash,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-    },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.create({
+      data: {
+        email: normalizedEmail,
+        passwordHash,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        accountType,
+        organizationName: accountType === "organization" ? (organizationName as string).trim() : null,
+      },
+    });
+
+    if (accountType === "personal") {
+      await tx.projectShare.updateMany({
+        where: { email: normalizedEmail, sharedWithUserId: null },
+        data: { sharedWithUserId: user.id },
+      });
+    }
+
+    return user;
   });
 }
 
