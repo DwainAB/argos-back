@@ -2,10 +2,10 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { AuthError, login, signAuthToken, signup } from "../services/auth.service";
 import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
+import { sendLoginNotificationEmail, sendWelcomeEmail } from "../services/email.service";
 
 export const authRouter = Router();
 
-// Durée de vie du cookie de session, alignée sur celle du JWT signé (voir auth.service.ts).
 const SESSION_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const SESSION_COOKIE_OPTIONS = {
@@ -15,7 +15,6 @@ const SESSION_COOKIE_OPTIONS = {
   maxAge: SESSION_COOKIE_MAX_AGE,
 };
 
-// Champs de l'utilisateur renvoyés au client : jamais passwordHash.
 function toPublicUser(user: {
   id: string;
   email: string;
@@ -38,13 +37,16 @@ function toPublicUser(user: {
   };
 }
 
-// POST /api/auth/signup
-// Crée un compte (email + mot de passe + prénom/nom) et ouvre directement la session.
 authRouter.post("/api/auth/signup", async (req, res) => {
   try {
     const user = await signup(req.body ?? {});
     const token = signAuthToken(user.id);
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+
+    sendWelcomeEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de bienvenue à ${user.email} :`, err)
+    );
+
     res.status(201).json({ user: toPublicUser(user) });
   } catch (err) {
     if (err instanceof AuthError) {
@@ -55,13 +57,16 @@ authRouter.post("/api/auth/signup", async (req, res) => {
   }
 });
 
-// POST /api/auth/login
-// Vérifie les identifiants et ouvre une session.
 authRouter.post("/api/auth/login", async (req, res) => {
   try {
     const user = await login(req.body ?? {});
     const token = signAuthToken(user.id);
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+
+    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+    );
+
     res.json({ user: toPublicUser(user) });
   } catch (err) {
     if (err instanceof AuthError) {
@@ -72,16 +77,11 @@ authRouter.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// POST /api/auth/logout
-// Ferme la session en cours en supprimant le cookie.
 authRouter.post("/api/auth/logout", (_req, res) => {
   res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
   res.status(204).end();
 });
 
-// GET /api/auth/me
-// Renvoie l'utilisateur actuellement connecté. 401 si aucune session valide — c'est ce
-// code que le frontend utilise pour distinguer "non connecté" d'une erreur réseau.
 authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });

@@ -1,9 +1,3 @@
-// Script de test isolé : vérifie le flux complet d'ingestion d'un log critique — création
-// du LogEntry, triage par l'IA locale, création de l'Alerte si confirmé — sans dépendre
-// d'une connexion Railway réelle. À lancer avec : npx tsx scripts/test-log-ingestion.ts
-//
-// Utilise le premier projet en base disponible.
-
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { persistGroupedLog } from "../src/services/railway-log-stream.service";
@@ -33,8 +27,6 @@ async function main() {
 
   console.log("\nLogEntry créé. Attente du triage IA (asynchrone, quelques secondes)...");
 
-  // Le triage tourne en tâche de fond (fire-and-forget) : on attend un peu avant de
-  // vérifier le résultat, plutôt que de le récupérer de façon synchrone.
   await new Promise((resolve) => setTimeout(resolve, 40_000));
 
   const logEntry = await prisma.logEntry.findFirst({

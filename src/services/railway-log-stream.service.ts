@@ -1,16 +1,10 @@
-// Streaming temps réel des logs de déploiement Railway, via subscription GraphQL WebSocket.
-// Détails du protocole (non documentés publiquement par Railway, déduits du code source
-// officiel du CLI railwayapp/cli) :
-//   - endpoint : wss://backboard.railway.com/graphql/v2
-//   - sous-protocole : "graphql-transport-ws" (lib graphql-ws)
-//   - authentification : header HTTP "project-access-token" sur la requête d'upgrade WS
-//   - subscription : deploymentLogs(deploymentId: $deploymentId, filter: $filter, limit: $limit)
-
 import { createClient, type Client } from "graphql-ws";
 import WebSocket from "ws";
 import { prisma } from "../lib/prisma";
 import { processIncomingLog, type GroupedLog } from "./log-grouper.service";
 import { triageLog } from "./log-triage.service";
+import { listProjectRecipients } from "./project-access.service";
+import { sendAlertEmail } from "./email.service";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -47,8 +41,6 @@ type LiveLog = {
   severity: string;
 };
 
-// Récupère l'ID du dernier déploiement d'un service/environnement (nécessaire pour ouvrir
-// une subscription, qui se fait par déploiement et non par service directement).
 async function fetchLatestDeploymentId(
   projectToken: string,
   params: { serviceId: string; environmentId: string }
@@ -72,11 +64,6 @@ async function fetchLatestDeploymentId(
   return json.data.deployments.edges[0]?.node.id ?? null;
 }
 
-// Enregistre en base un log déjà regroupé/classifié (voir log-grouper.service.ts). Pour
-// un log "critical" ou "warning", déclenche ensuite le triage par l'IA locale en tâche de
-// fond (voir triageIncidentIfNeeded) — sans attendre sa réponse, pour ne jamais ralentir
-// le flux de logs entrant. Exportée pour être testable isolément (voir
-// scripts/test-log-ingestion.ts), sans dépendre d'une connexion Railway réelle.
 export async function persistGroupedLog(projectId: string, log: GroupedLog) {
   const needsTriage = log.category === "critical" || log.category === "warning";
 
@@ -93,10 +80,9 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
   });
 
   if (needsTriage) {
-    triageIncidentIfNeeded(entry.id, log).catch(async (err) => {
+    triageIncidentIfNeeded(projectId, entry.id, log).catch(async (err) => {
       console.error(`Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`, err);
-      // Sans ça, le log resterait affiché "en cours de vérification" indéfiniment côté
-      // interface si Ollama est injoignable ou plante en cours de route.
+
       await prisma.logEntry
         .update({ where: { id: entry.id }, data: { triageStatus: "done" } })
         .catch(() => {});
@@ -104,14 +90,7 @@ export async function persistGroupedLog(projectId: string, log: GroupedLog) {
   }
 }
 
-// Fait confirmer par l'IA locale qu'un log classé "critical"/"warning" par les règles est
-// un vrai problème, et crée l'Alerte correspondante si oui. Un faux positif n'est pas
-// supprimé : le LogEntry reste consultable dans l'historique, seule l'Alerte n'est pas créée.
-// La catégorie initiale (posée par les règles, volontairement prudentes) est corrigée par
-// celle décidée par l'IA — ex: un warning qui n'est qu'une simple information repasse "info".
-// triageStatus trace la progression (pending → checking → done) pour que l'interface puisse
-// montrer qu'un log n'a pas été oublié pendant que l'appel à Ollama est en cours.
-async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
+async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log: GroupedLog) {
   await prisma.logEntry.update({ where: { id: logEntryId }, data: { triageStatus: "checking" } });
 
   const triage = await triageLog({ level: log.level, category: log.category, message: log.rawMessage });
@@ -131,20 +110,36 @@ async function triageIncidentIfNeeded(logEntryId: string, log: GroupedLog) {
     await prisma.alert.create({
       data: { logEntryId, explanation: triage.explanation },
     });
+
+    notifyProjectRecipients(projectId, triage.finalCategory, triage.explanation).catch((err) =>
+      console.error(`Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`, err)
+    );
   }
 }
 
-// Un client WebSocket actif par projet Guardian AI surveillé.
+async function notifyProjectRecipients(projectId: string, level: string, explanation: string) {
+  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+  if (!project) return;
+
+  const recipients = await listProjectRecipients(projectId);
+
+  await Promise.all(
+    recipients.map((to) =>
+      sendAlertEmail({ to, projectName: project.name, level, explanation }).catch((err) =>
+        console.error(`Erreur lors de l'envoi de l'email d'alerte à ${to} :`, err)
+      )
+    )
+  );
+}
+
 const activeClients = new Map<string, Client>();
 
-// Démarre (ou redémarre) le streaming des logs pour un projet Guardian AI donné.
 export async function startLogStreamForProject(project: {
   id: string;
   railwayProjectToken: string;
   railwayServiceId: string;
   railwayEnvironmentId: string;
 }) {
-  // Évite les doublons de connexion si déjà en cours de streaming.
   stopLogStreamForProject(project.id);
 
   const deploymentId = await fetchLatestDeploymentId(project.railwayProjectToken, {
@@ -157,9 +152,6 @@ export async function startLogStreamForProject(project: {
     return;
   }
 
-  // Le protocole "graphql-transport-ws" de Railway attend le token en header HTTP au
-  // moment de l'upgrade WebSocket (pas dans connectionParams) — on fournit donc une
-  // factory de WebSocket qui injecte ce header à la construction du socket.
   const webSocketImplWithAuth = class extends WebSocket {
     constructor(address: string, protocols?: string | string[]) {
       super(address, protocols, {

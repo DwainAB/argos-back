@@ -10,7 +10,6 @@ app.listen(env.port, () => {
   bootstrapRailwayLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Railway :", err));
 });
 
-// Ferme proprement les connexions WebSocket ouvertes lors de l'arrêt du serveur.
 process.on("SIGINT", () => {
   stopAllLogStreams();
   process.exit(0);

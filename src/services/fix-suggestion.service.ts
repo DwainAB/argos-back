@@ -1,15 +1,3 @@
-// Proposition de correctif par une IA distante (OpenAI), déclenchée à la demande depuis
-// une alerte (bouton "Demander une correction par IA"). Contrairement au triage/l'explication
-// locale (Ollama), ce service a le droit d'explorer le code source du dépôt GitHub associé
-// au projet, pour localiser précisément la cause du problème et proposer un correctif.
-//
-// Exploration via tool calling natif de l'API OpenAI (list_files / read_file, qui wrappent
-// github-repo-explorer.service.ts — même mécanisme de lecture à la demande, sans clone, déjà
-// utilisé ailleurs dans le projet). Le tool calling d'Ollama s'était avéré peu fiable pour ce
-// genre de boucle agentique (voir JOURNAL.md) ; celui d'OpenAI est structuré nativement par
-// l'API et ne pose pas ce problème, ce qui a justifié de réserver cette tâche à un modèle
-// distant plus capable plutôt que de retenter l'approche en local.
-
 import OpenAI from "openai";
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { env } from "../config/env";
@@ -106,9 +94,6 @@ const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-// Explore le dépôt et propose un correctif pour l'erreur décrite par logMessage. Retourne
-// null si l'IA n'a pas pu proposer de correctif fiable (signalé via report_no_fix, ou
-// nombre maximal d'étapes atteint sans conclusion).
 export async function suggestFix(params: {
   installationId: number;
   owner: string;
@@ -129,10 +114,7 @@ export async function suggestFix(params: {
       model: env.openai.model,
       messages,
       tools: TOOLS,
-      // "auto" plutôt que "required" : forcer un appel d'outil à chaque tour empêchait le
-      // modèle de marquer une pause de raisonnement entre deux lectures, et le poussait à
-      // relire un fichier déjà vu faute d'alternative — observé en test avec GPT-4.1, qui
-      // relisait le même fichier en entier plusieurs fois sans jamais conclure.
+
       tool_choice: "auto",
     });
 
@@ -146,9 +128,6 @@ export async function suggestFix(params: {
     messages.push(message);
 
     if (!toolCalls || toolCalls.length === 0) {
-      // Réponse en texte libre (raisonnement, ou tentative de conclusion non structurée) :
-      // on la laisse dans l'historique et on redemande explicitement de conclure via un
-      // outil, plutôt que d'abandonner immédiatement.
       messages.push({
         role: "user",
         content: "Continue avec un appel d'outil : propose_fix si tu as identifié la cause avec certitude, report_no_fix sinon, ou list_files/read_file/read_file_range pour poursuivre l'exploration.",
@@ -156,12 +135,6 @@ export async function suggestFix(params: {
       continue;
     }
 
-    // L'API OpenAI peut renvoyer plusieurs tool_calls dans un même message (ex: plusieurs
-    // read_file en parallèle). Chacun DOIT recevoir une réponse "tool" avant le prochain
-    // appel, sinon l'API rejette la conversation entière au tour suivant (observé en
-    // test : "tool_call_ids did not have response messages"). On répond donc à tous,
-    // même si un propose_fix/report_no_fix apparaît parmi eux — la conclusion n'est
-    // retournée qu'une fois tous traités.
     let conclusion: FixSuggestion | null | undefined;
 
     for (const toolCall of toolCalls) {
@@ -225,8 +198,6 @@ export async function suggestFix(params: {
         continue;
       }
 
-      // Nom d'outil inconnu (ne devrait pas arriver, la liste TOOLS est exhaustive) :
-      // réponse neutre pour rester valide, l'appel suivant tranchera.
       messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Outil inconnu." });
     }
 
@@ -234,10 +205,6 @@ export async function suggestFix(params: {
       return conclusion;
     }
 
-    // Rappel du log d'origine : le contexte initial s'éloigne vite au fil de
-    // l'exploration et le modèle tend à dériver vers des pistes sans rapport (observé en
-    // test avec l'exploration locale, voir JOURNAL.md). Le lui remettre sous les yeux à
-    // chaque étape limite ce risque.
     messages.push({ role: "user", content: `Rappel — log à corriger :\n\n${logMessage}` });
   }
 

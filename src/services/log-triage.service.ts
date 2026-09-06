@@ -1,20 +1,3 @@
-// Triage local d'un log critique/warning par l'IA (Ollama) : deuxième filtre après la
-// classification par règles (log-classifier.service.ts), avant de déranger l'utilisateur.
-//
-// Rôle strictement limité à la confirmation et à la vulgarisation — l'IA locale ne lit
-// jamais le code source du projet. Un seul appel, pas d'exploration : c'est ce qui rend
-// ce triage fiable avec un modèle 7B local, contrairement à une exploration agentique du
-// dépôt (tentée puis abandonnée pour cette raison, voir historique du projet).
-//
-// - Si le log est un faux positif (ex: erreur applicative normale mal classée), le triage
-//   le signale pour qu'on ne crée pas d'alerte inutile.
-// - Sinon, l'IA rédige une explication en langage clair, destinée à quelqu'un qui ne lit
-//   pas le code, et une Alerte est créée à partir de ce résultat.
-//
-// La recherche de la cause dans le code et la proposition de correctif sont une étape
-// séparée, déclenchée à la demande sur l'alerte, et confiée à une IA distante plus capable
-// (voir correction, à venir).
-
 import { env } from "../config/env";
 
 export type LogTriageResult = {
@@ -35,8 +18,6 @@ Réponds UNIQUEMENT avec un objet JSON de la forme :
 
 Si isRealIssue est false, "explanation" indique brièvement pourquoi ce n'est pas un problème réel. Si isRealIssue est true, "explanation" est le texte destiné à l'équipe (2-4 phrases, sans jargon inutile, sans supposition sur le code source que tu n'as pas vu).`;
 
-// Interroge Ollama pour trier un log déjà classé "critical" ou "warning". Un seul appel,
-// contraint au format JSON — pas de boucle, pas d'accès au code source.
 export async function triageLog(params: { level: string; category: string; message: string }): Promise<LogTriageResult> {
   const response = await fetch(`${env.ollama.baseUrl}/api/chat`, {
     method: "POST",
@@ -73,14 +54,8 @@ export async function triageLog(params: { level: string; category: string; messa
       return { isRealIssue: parsed.isRealIssue, finalCategory, explanation: parsed.explanation };
     }
   } catch {
-    // Réponse non exploitable : traité ci-dessous comme les autres cas incertains.
   }
 
-  // Réponse du modèle imparfaite ou incomplète : par prudence, on considère le log comme
-  // un vrai problème plutôt que de risquer de faire disparaître silencieusement une
-  // alerte légitime — un faux positif affiché reste moins grave qu'un vrai bug ignoré. On
-  // garde aussi le niveau brut d'origine ("warning"/"critical") plutôt que de le rétrograder
-  // à l'aveugle vers "info".
   return {
     isRealIssue: true,
     finalCategory: params.category === "critical" ? "critical" : "warning",

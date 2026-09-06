@@ -1,10 +1,3 @@
-// Script de test isolé : vérifie qu'on peut bien lire l'arborescence puis le contenu
-// d'un fichier d'un repo GitHub connecté, via le service d'exploration.
-// À lancer avec : npx tsx scripts/test-github-explorer.ts
-//
-// Utilise le premier projet en base ayant une installation GitHub connectée
-// (voir backend/src/services/github-repo-explorer.service.ts).
-
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
 import { getRepoTree, getFileContent } from "../src/services/github-repo-explorer.service";

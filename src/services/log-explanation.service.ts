@@ -1,9 +1,3 @@
-// Explication à la demande d'un log par l'IA locale (Ollama) : contrairement au triage
-// (log-triage.service.ts, qui juge si un log critical/warning est un vrai problème), ce
-// service se contente de vulgariser un log quelconque — quel que soit son niveau — pour
-// quelqu'un qui ne lit pas forcément le code. Déclenché au clic sur un log dans
-// l'interface, pas automatiquement à l'ingestion.
-
 import { env } from "../config/env";
 
 const SYSTEM_PROMPT = `Tu es un assistant qui explique des logs d'application backend en langage clair, à des personnes qui ne lisent pas forcément le code.
@@ -12,13 +6,6 @@ On te donne un log brut, avec son niveau. Rédige une explication courte (2-3 ph
 
 Réponds UNIQUEMENT avec le texte de l'explication, sans JSON, sans guillemets, sans préambule.`;
 
-// Interroge Ollama pour expliquer un log quelconque, à la demande, et streame les morceaux
-// de réponse au fur et à mesure via le callback `onChunk` — évite d'attendre la génération
-// complète avant de pouvoir afficher quoi que ce soit côté interface. Pas de contrainte de
-// format JSON ici (elle forçait Ollama à attendre la fin de la génération pour valider la
-// structure, ce qui empêchait tout streaming utile) : la sortie est du texte libre.
-// `keep_alive` maintient le modèle chargé en mémoire plus longtemps entre deux appels, pour
-// éviter un rechargement coûteux (plusieurs secondes) après une période d'inactivité.
 export async function explainLog(
   params: { level: string; message: string },
   onChunk?: (chunk: string) => void

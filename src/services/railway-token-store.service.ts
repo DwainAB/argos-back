@@ -1,7 +1,3 @@
-// Stockage TEMPORAIRE en mémoire du dernier token Railway obtenu via OAuth.
-// À remplacer par une vraie persistance en base (Prisma), rattachée à l'utilisateur
-// connecté, une fois l'authentification Guardian AI en place. Perdu au redémarrage du serveur.
-
 import type { RailwayTokenResponse } from "./railway-oauth.service";
 
 type StoredToken = {

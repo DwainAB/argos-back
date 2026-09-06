@@ -6,11 +6,6 @@ import { projectAccessFilter } from "../services/project-access.service";
 
 export const alertsRouter = Router();
 
-// GET /api/projects/:projectId/alerts
-// Liste les alertes d'un projet (logs confirmés comme de vrais problèmes par le triage
-// IA, voir backend/src/services/log-triage.service.ts), du plus récent au plus ancien.
-// Par défaut, ne renvoie que les alertes non traitées ; ?resolved=true renvoie l'historique
-// des alertes marquées traitées (voir POST /api/alerts/:alertId/resolve).
 alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const { projectId } = req.params;
   const resolved = req.query.resolved === "true";
@@ -38,8 +33,6 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   }
 });
 
-// GET /api/alerts/:alertId
-// Détail d'une alerte précise, avec son log d'origine — page dédiée à une alerte.
 alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
   const { alertId } = req.params;
 
@@ -60,9 +53,6 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
   }
 });
 
-// POST /api/alerts/:alertId/resolve
-// Marque l'alerte comme traitée par l'utilisateur, depuis sa page de détail. Indépendant
-// du statut de correctif : une alerte peut être traitée avec ou sans correctif proposé.
 alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
   const { alertId } = req.params;
 
@@ -88,8 +78,6 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
   }
 });
 
-// POST /api/alerts/:alertId/reopen
-// Annule le marquage "traitée" : remet l'alerte parmi les alertes actives.
 alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
   const { alertId } = req.params;
 
@@ -115,10 +103,6 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
   }
 });
 
-// POST /api/alerts/:alertId/fix/request
-// Déclenche la proposition de correctif par l'IA distante (bouton "Demander une
-// correction par IA"). Explore le repo GitHub associé au projet, propose un diff
-// avant/après si une cause fiable est identifiée, et passe l'alerte en "fix_proposed".
 alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
   const { alertId } = req.params;
 
@@ -170,9 +154,6 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
   }
 });
 
-// POST /api/alerts/:alertId/fix/accept
-// L'utilisateur valide le correctif proposé : ouvre réellement la pull request sur
-// GitHub. Ne merge jamais automatiquement — l'utilisateur décide ensuite sur GitHub.
 alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
   const { alertId } = req.params;
 
@@ -222,9 +203,6 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
   }
 });
 
-// POST /api/alerts/:alertId/fix/reject
-// L'utilisateur refuse le correctif proposé : le correctif reste affiché tel quel, sans
-// pull request créée.
 alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
   const { alertId } = req.params;
 

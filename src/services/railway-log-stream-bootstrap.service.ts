@@ -1,6 +1,3 @@
-// Relance le streaming des logs pour tous les projets Railway déjà connectés en base,
-// au démarrage du serveur (le streaming en mémoire ne survit pas à un redémarrage).
-
 import { prisma } from "../lib/prisma";
 import { startLogStreamForProject } from "./railway-log-stream.service";
 

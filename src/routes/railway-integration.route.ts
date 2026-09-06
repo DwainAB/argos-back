@@ -11,9 +11,6 @@ import { fetchAccessibleProjects, fetchLatestDeploymentLogs, fetchMe } from "../
 
 export const railwayIntegrationRouter = Router();
 
-// Noms des cookies temporaires utilisés le temps du flux OAuth (entre /start et /callback).
-// TODO : une fois l'authentification utilisateur en place, remplacer par une vraie session
-// et persister le token Railway obtenu en base de données, rattaché à l'utilisateur.
 const STATE_COOKIE = "railway_oauth_state";
 const VERIFIER_COOKIE = "railway_oauth_verifier";
 
@@ -21,11 +18,9 @@ const TEMP_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: env.port !== 4000 || process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
-  maxAge: 5 * 60 * 1000, // 5 minutes, largement suffisant pour le temps d'un login
+  maxAge: 5 * 60 * 1000,
 };
 
-// GET /api/integrations/railway/start
-// Redirige l'utilisateur vers la page d'autorisation Railway.
 railwayIntegrationRouter.get("/api/integrations/railway/start", (_req, res) => {
   const state = crypto.randomBytes(16).toString("hex");
   const { codeVerifier, codeChallenge } = generatePkcePair();
@@ -37,8 +32,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/start", (_req, res) => {
   res.redirect(authorizeUrl);
 });
 
-// GET /api/integrations/railway/callback
-// Railway redirige ici après que l'utilisateur a autorisé (ou refusé) l'accès.
 railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, res) => {
   const { code, state, error } = req.query;
 
@@ -59,8 +52,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, r
   try {
     const token = await exchangeCodeForToken({ code: String(code), codeVerifier });
 
-    // DEBUG temporaire : inspection de la forme exacte du token reçu, pour diagnostiquer
-    // l'erreur "Not Authorized" systématique sur l'API GraphQL. À retirer une fois résolu.
     console.log("DEBUG token reçu :", {
       token_type: token.token_type,
       expires_in: token.expires_in,
@@ -69,9 +60,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, r
       access_token_length: token.access_token?.length,
     });
 
-    // TODO : persister en base, rattaché à l'utilisateur connecté, une fois
-    // l'authentification Guardian AI en place. Pour l'instant, stockage en mémoire
-    // (voir railway-token-store.service.ts) le temps de valider le flux de bout en bout.
     storeRailwayToken(token);
 
     res.redirect(`${env.frontendUrl}/dashboard/projects/new?railway_connected=true`);
@@ -81,9 +69,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, r
   }
 });
 
-// GET /api/integrations/railway/debug-oauth-me
-// Route de diagnostic temporaire : teste l'endpoint REST /oauth/me (distinct de GraphQL),
-// pour isoler si le token OAuth est rejeté partout ou seulement sur /graphql/v2.
 railwayIntegrationRouter.get("/api/integrations/railway/debug-oauth-me", async (_req, res) => {
   const stored = getStoredRailwayToken();
 
@@ -102,9 +87,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/debug-oauth-me", async (
   }
 });
 
-// GET /api/integrations/railway/debug-me
-// Route de diagnostic temporaire : vérifie que le token stocké est valide, indépendamment
-// des permissions sur "projects". À retirer une fois le flux OAuth stabilisé.
 railwayIntegrationRouter.get("/api/integrations/railway/debug-me", async (_req, res) => {
   const stored = getStoredRailwayToken();
 
@@ -120,8 +102,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/debug-me", async (_req, 
   }
 });
 
-// GET /api/integrations/railway/projects
-// Liste les projets/services accessibles avec le dernier token Railway obtenu.
 railwayIntegrationRouter.get("/api/integrations/railway/projects", async (_req, res) => {
   const stored = getStoredRailwayToken();
 
@@ -138,8 +118,6 @@ railwayIntegrationRouter.get("/api/integrations/railway/projects", async (_req, 
   }
 });
 
-// GET /api/integrations/railway/test-logs?serviceId=...&environmentId=...
-// Récupère les logs du dernier déploiement d'un service, avec le token OAuth obtenu.
 railwayIntegrationRouter.get("/api/integrations/railway/test-logs", async (req, res) => {
   const stored = getStoredRailwayToken();
 

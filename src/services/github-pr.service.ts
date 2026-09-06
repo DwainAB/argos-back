@@ -1,8 +1,3 @@
-// Création d'une pull request GitHub contenant un correctif proposé par l'IA (voir
-// fix-suggestion.service.ts). N'agit que sur validation explicite de l'utilisateur — voir
-// POST /api/alerts/:id/fix/accept — jamais de merge automatique, cohérent avec la règle du
-// projet "fusion toujours via PR décidée par l'utilisateur".
-
 import { getInstallationOctokit } from "./github-app.service";
 
 export type CreateFixPullRequestParams = {
@@ -16,15 +11,10 @@ export type CreateFixPullRequestParams = {
   explanation: string;
 };
 
-// Crée une branche dédiée depuis baseBranch, y commite le remplacement de oldCode par
-// newCode dans filePath, puis ouvre une pull request vers baseBranch. Retourne l'URL de la
-// PR créée.
 export async function createFixPullRequest(params: CreateFixPullRequestParams): Promise<string> {
   const { installationId, owner, repo, baseBranch, filePath, oldCode, newCode, explanation } = params;
   const octokit = getInstallationOctokit(installationId);
 
-  // Nom de branche unique pour éviter toute collision si une correction est demandée
-  // plusieurs fois sur le même fichier.
   const branchName = `guardian-ai/fix-${Date.now()}`;
 
   const { data: baseRef } = await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
