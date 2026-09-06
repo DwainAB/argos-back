@@ -16,38 +16,25 @@ model User {
   phone        String?
   createdAt    DateTime @default(now())
 
-  // "personal" (compte solo, par défaut) ou "organization" — déterminé une seule fois à
-  // l'inscription, jamais modifié ensuite (pas de bascule solo ↔ organisation, contrairement
-  // à un essai précédent qui envisageait la coexistence des deux — abandonné, voir JOURNAL.md).
   accountType      String  @default("personal")
-  // Renseigné uniquement pour un compte "organization" ; nul pour un compte personnel.
   organizationName String?
 
   projects Project[]
 
-  // Projets d'un compte "organization" partagés avec ce compte (forcément "personal") — voir
-  // ProjectShare. Un compte organisation ne peut jamais être destinataire d'un partage.
   receivedProjectShares ProjectShare[]
 }
 
 model Project {
-  id           String   @id @default(uuid())
-  name         String
-  // Dépôt GitHub associé, au format "owner/repo".
-  githubRepo   String?
-  githubBranch String?
-  // Identifiant de l'installation GitHub App donnant accès à ce dépôt (voir
-  // backend/src/services/github-app.service.ts). Nécessaire pour ré-authentifier les
-  // appels à l'API GitHub (lecture de code, futures PR) après la connexion initiale.
+  id                   String   @id @default(uuid())
+  name                 String
+  githubRepo           String?
+  githubBranch         String?
   githubInstallationId Int?
-  createdAt    DateTime @default(now())
+  createdAt            DateTime @default(now())
 
-  // Connexion Railway (Project Token en attendant que l'OAuth "Login with Railway"
-  // soit fonctionnel côté Railway, voir backend/src/services/railway-oauth.service.ts).
-  // TODO : chiffrer railwayProjectToken avant la mise en production.
-  railwayProjectToken   String? @db.Text
-  railwayServiceId      String?
-  railwayEnvironmentId  String?
+  railwayProjectToken  String? @db.Text
+  railwayServiceId     String?
+  railwayEnvironmentId String?
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
@@ -58,18 +45,11 @@ model Project {
   @@index([userId])
 }
 
-// Partage d'un projet d'un compte organisation avec un compte personnel, par email —
-// jamais une adhésion à toute l'organisation, un accès à ce seul projet. Le compte
-// personnel bénéficiaire voit ce projet apparaître dans sa propre liste de projets, en
-// plus des siens, et le manipule normalement (logs, alertes, paramètres).
 model ProjectShare {
   id        String  @id @default(uuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id])
 
-  // Email de la personne avec qui le projet est partagé. sharedWithUserId reste nul tant
-  // que personne ne s'est inscrit avec cet email en compte personnel — l'accès s'active
-  // automatiquement à l'inscription (voir backend/src/services/auth.service.ts::signup).
   email            String
   sharedWithUserId String?
   sharedWithUser   User?   @relation(fields: [sharedWithUserId], references: [id])
@@ -89,29 +69,12 @@ model LogEntry {
   aiSummary  String?  @db.Text
   createdAt  DateTime @default(now())
 
-  // Classification Guardian AI, distincte du "level" brut fourni par Railway.
-  // Calculée par des règles simples (voir backend/src/services/log-classifier.service.ts) ;
-  // vouée à être affinée par l'IA (Ollama) pour les cas ambigus dans une prochaine étape.
-  // Valeurs : "critical" (crash/panne), "warning" (dégradation), "benign" (erreur utilisateur
-  // normale, ex: validation), "info" (aucune action requise).
   category String @default("info")
 
-  // État du triage par l'IA locale pour ce log. "none" : log non concerné (catégorie
-  // initiale "info" ou "benign", jamais soumis au triage). "pending" : classé
-  // "critical"/"warning" par les règles, en attente du lancement de l'appel IA.
-  // "checking" : l'appel à Ollama est en cours. "done" : triage terminé (isRealIssue tranché,
-  // category éventuellement corrigée). Permet d'afficher qu'un log n'a pas été oublié.
   triageStatus String @default("none")
 
-  // Catégorie posée par les règles avant reclassification par le triage IA (voir
-  // log-triage.service.ts). Nul tant que le log n'a pas été reclassifié — donc null la
-  // plupart du temps (logs "info" jamais triés, ou logs triés que l'IA a confirmés tels
-  // quels). Rempli uniquement quand "category" ci-dessus diffère du classement initial,
-  // pour pouvoir afficher "reclassifié par l'IA (était : ...)" dans l'interface.
   originalCategory String?
 
-  // Identifiant du log tel que fourni par Railway (timestamp de log), utilisé pour éviter
-  // d'enregistrer deux fois le même événement lors du polling/streaming.
   externalTimestamp DateTime?
 
   projectId String
@@ -122,28 +85,15 @@ model LogEntry {
   @@index([projectId, createdAt])
 }
 
-// Alerte créée quand le triage local (voir backend/src/services/log-triage.service.ts)
-// confirme qu'un log "critical"/"warning" est un vrai problème (pas un faux positif).
-// Porte aussi le suivi de la demande de correction par IA distante, déclenchée à la
-// demande depuis la page de l'alerte (v2).
 model Alert {
   id          String   @id @default(uuid())
   explanation String   @db.Text
   createdAt   DateTime @default(now())
 
-  // Statut du cycle de correction. "open" : pas encore de correction demandée.
-  // "fix_proposed" : l'IA distante a proposé un correctif, en attente de décision
-  // utilisateur. "fix_accepted" : l'utilisateur a validé, la pull request a été ouverte.
-  // "fix_rejected" : l'utilisateur a refusé, le correctif proposé reste affiché tel quel.
   status String @default("open")
 
-  // Date à laquelle l'utilisateur a marqué cette alerte comme traitée depuis sa page de
-  // détail. Nul tant que l'alerte est encore active. Distinct de "status" : une alerte peut
-  // être marquée traitée qu'un correctif ait été proposé ou non.
   resolvedAt DateTime?
 
-  // Correctif proposé par l'IA distante (v2) : fichier concerné, contenu avant/après.
-  // Nuls tant qu'aucune correction n'a été demandée ou obtenue.
   proposedFilePath String? @db.Text
   proposedOldCode  String? @db.Text
   proposedNewCode  String? @db.Text

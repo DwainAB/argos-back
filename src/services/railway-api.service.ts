@@ -1,7 +1,3 @@
-// Accès à l'API GraphQL publique de Railway, avec un access token OAuth ("Login with Railway").
-// Contrairement au script scripts/test-railway-logs.ts (qui utilise un Project Token via le
-// header "Project-Access-Token"), ici l'authentification se fait par Bearer token OAuth.
-
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
 
 async function callRailwayApi<T>(accessToken: string, query: string, variables: Record<string, unknown>): Promise<T> {
@@ -23,8 +19,6 @@ async function callRailwayApi<T>(accessToken: string, query: string, variables: 
   return json.data as T;
 }
 
-// Requête de diagnostic simple, utilisée pour vérifier qu'un token OAuth est valide
-// indépendamment des permissions sur "projects".
 const ME_QUERY = `
   query Me {
     me {
@@ -38,7 +32,6 @@ export async function fetchMe(accessToken: string) {
   return callRailwayApi<{ me: { name: string; email: string } }>(accessToken, ME_QUERY, {});
 }
 
-// "projects" est un champ racine du schéma Railway (pas un sous-champ de "me").
 const PROJECTS_QUERY = `
   query Projects {
     projects {
@@ -75,9 +68,6 @@ export type RailwayProjectSummary = {
   environments: { id: string; name: string }[];
 };
 
-// Liste les projets accessibles par l'utilisateur ayant autorisé Guardian AI.
-// Avec un token OAuth (scope project:viewer), ne renvoie que les projets explicitement
-// sélectionnés par l'utilisateur lors de l'écran de consentement.
 export async function fetchAccessibleProjects(accessToken: string): Promise<RailwayProjectSummary[]> {
   const data = await callRailwayApi<{
     projects: {
@@ -133,7 +123,6 @@ export type RailwayLogEntry = {
   severity: string;
 };
 
-// Récupère les logs du dernier déploiement d'un service/environnement donné.
 export async function fetchLatestDeploymentLogs(
   accessToken: string,
   params: { serviceId: string; environmentId: string }

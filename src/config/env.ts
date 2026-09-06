@@ -1,8 +1,6 @@
 import "dotenv/config";
 import fs from "node:fs";
 
-// La clé privée GitHub App peut être fournie directement (variable d'env, avec des \n
-// littéraux à la place des retours à la ligne) ou via un chemin vers le fichier .pem.
 function loadGithubPrivateKey(): string {
   if (process.env.GITHUB_APP_PRIVATE_KEY) {
     return process.env.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n");
@@ -18,17 +16,12 @@ export const env = {
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
   databaseUrl: process.env.DATABASE_URL ?? "",
   auth: {
-    // Secret de signature des JWT de session (cookie httpOnly). Une valeur de repli est
-    // fournie pour ne pas casser le démarrage en dev si elle est oubliée, mais elle doit
-    // impérativement être définie en production.
     jwtSecret: process.env.JWT_SECRET ?? "dev-secret-a-ne-jamais-utiliser-en-production",
   },
   railway: {
-    // Project Token de test, utilisé par scripts/test-railway-logs.ts.
     projectToken: process.env.RAILWAY_PROJECT_TOKEN ?? "",
     environmentId: process.env.RAILWAY_ENVIRONMENT_ID ?? "",
     serviceId: process.env.RAILWAY_SERVICE_ID ?? "",
-    // OAuth App ("Login with Railway"), utilisée pour la connexion utilisateur réelle.
     oauthClientId: process.env.RAILWAY_OAUTH_CLIENT_ID ?? "",
     oauthClientSecret: process.env.RAILWAY_OAUTH_CLIENT_SECRET ?? "",
     oauthRedirectUri:
@@ -48,9 +41,10 @@ export const env = {
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? "",
-    // Modèle utilisé pour la correction (exploration du repo + proposition de diff, voir
-    // backend/src/services/fix-suggestion.service.ts) : nécessite un bon niveau en code et
-    // un tool calling fiable, contrairement au modèle local (voir JOURNAL.md).
     model: process.env.OPENAI_MODEL ?? "gpt-4.1",
+  },
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? "",
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
   },
 };

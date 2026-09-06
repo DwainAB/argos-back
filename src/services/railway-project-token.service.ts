@@ -1,8 +1,3 @@
-// Accès à l'API GraphQL publique de Railway avec un Project Token (header "Project-Access-Token").
-// Solution retenue temporairement : le flux OAuth "Login with Railway" produit un access_token
-// valide (vérifié via /oauth/me) mais systématiquement rejeté par /graphql/v2 ("Not Authorized").
-// Le Project Token, lui, fonctionne de façon fiable sur ce même endpoint.
-
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
 
 async function callRailwayApi<T>(projectToken: string, query: string, variables: Record<string, unknown>): Promise<T> {
@@ -63,7 +58,6 @@ export type RailwayDeploymentSummary = {
   createdAt: string;
 };
 
-// Récupère le dernier déploiement d'un service/environnement (statut + date), sans ses logs.
 export async function fetchLatestDeployment(
   projectToken: string,
   params: { serviceId: string; environmentId: string }
@@ -75,7 +69,6 @@ export async function fetchLatestDeployment(
   return deploymentsData.deployments.edges[0]?.node ?? null;
 }
 
-// Récupère les logs du dernier déploiement d'un service/environnement, avec un Project Token.
 export async function fetchLatestDeploymentLogsWithProjectToken(
   projectToken: string,
   params: { serviceId: string; environmentId: string }

@@ -1,6 +1,3 @@
-// Script de test isolé : vérifie qu'on peut bien récupérer les logs d'un projet Railway
-// via l'API GraphQL, avec un Project Token. À lancer avec : npx tsx scripts/test-railway-logs.ts
-
 import "dotenv/config";
 
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -16,7 +13,6 @@ if (!token || !environmentId || !serviceId) {
   process.exit(1);
 }
 
-// Requiert d'abord le déploiement actif du service, pour ensuite récupérer ses logs.
 const DEPLOYMENTS_QUERY = `
   query Deployments($serviceId: String!, $environmentId: String!) {
     deployments(

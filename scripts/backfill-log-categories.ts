@@ -1,7 +1,3 @@
-// Script de backfill : applique les règles de classification (log-classifier.service.ts)
-// aux logs déjà en base, créés avant l'introduction du champ "category".
-// À lancer avec : npx tsx scripts/backfill-log-categories.ts
-
 import { prisma } from "../src/lib/prisma";
 import { classifyLog } from "../src/services/log-classifier.service";
 

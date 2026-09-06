@@ -3,12 +3,8 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
 
-// Nombre de tours de salage bcrypt. 10 est la valeur recommandée par défaut (bon
-// compromis coût/sécurité), pas besoin de monter plus haut pour ce cas d'usage.
 const BCRYPT_ROUNDS = 10;
 
-// Durée de vie du token de session, alignée sur la durée du cookie posé par les routes
-// (voir auth.route.ts).
 const TOKEN_TTL = "7d";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -59,7 +55,6 @@ export function signAuthToken(userId: string) {
   return jwt.sign({ sub: userId }, env.auth.jwtSecret, { expiresIn: TOKEN_TTL });
 }
 
-// Renvoie l'id utilisateur porté par le token, ou null s'il est absent/invalide/expiré.
 export function verifyAuthToken(token: string): string | null {
   try {
     const payload = jwt.verify(token, env.auth.jwtSecret);
@@ -72,11 +67,6 @@ export function verifyAuthToken(token: string): string | null {
   }
 }
 
-// Crée un compte utilisateur après validation des champs et vérification de l'unicité de
-// l'email. Lève une AuthError (avec statusCode) en cas de champ invalide ou d'email déjà pris.
-// accountType est définitif : pas de bascule solo ↔ organisation ensuite. Pour un compte
-// "personal", rattache automatiquement les partages de projet déjà en attente pour cet
-// email (voir ProjectShare et project-share.service.ts) — l'accès s'active tout seul.
 export async function signup(input: {
   email: unknown;
   password: unknown;
@@ -129,9 +119,6 @@ export async function signup(input: {
   });
 }
 
-// Vérifie les identifiants et renvoie l'utilisateur correspondant. Lève une AuthError
-// générique (même message pour email inconnu ou mot de passe incorrect) pour ne pas
-// révéler si un email est enregistré ou non.
 export async function login(input: { email: unknown; password: unknown }) {
   const { email, password } = input;
 

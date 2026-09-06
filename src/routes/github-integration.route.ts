@@ -10,12 +10,6 @@ import {
 } from "../services/github-app.service";
 import { projectAccessFilter } from "../services/project-access.service";
 
-// Routes /start et /callback à part : elles sont accessibles sans authMiddleware (voir
-// app.ts) car appelées par une navigation directe du navigateur (popup ouvert via
-// window.open, puis redirection depuis github.com) et non par un fetch avec le cookie de
-// session applicatif. L'appartenance au bon projet reste garantie ailleurs : le state
-// signé encode le projectId, et POST /api/projects/:projectId/github (qui associe
-// réellement le dépôt) reste protégée et filtrée par userId.
 export const githubPublicRouter = Router();
 export const githubIntegrationRouter = Router();
 
@@ -27,10 +21,6 @@ const TEMP_COOKIE_OPTIONS = {
   maxAge: 10 * 60 * 1000,
 };
 
-// GET /api/integrations/github/start?projectId=...
-// Redirige vers la page d'installation de la GitHub App Argos AI. Appelée dans un popup
-// ouvert par le front (voir GithubConnectButton) : le résultat revient via postMessage
-// depuis /callback ci-dessous, pas par redirection de page.
 githubPublicRouter.get("/api/integrations/github/start", (req, res) => {
   const projectId = String(req.query.projectId ?? "");
   const nonce = crypto.randomBytes(16).toString("hex");
@@ -40,9 +30,6 @@ githubPublicRouter.get("/api/integrations/github/start", (req, res) => {
   res.redirect(buildGithubInstallUrl(state));
 });
 
-// Petite page HTML servie au popup GitHub une fois l'installation (ou sa mise à jour)
-// terminée : transmet le résultat à la fenêtre d'origine via postMessage puis se ferme,
-// plutôt que de rediriger le popup lui-même vers le dashboard (voir /callback ci-dessous).
 function renderPostMessagePage(payload: Record<string, unknown>) {
   return `<!doctype html>
 <html><body>
@@ -55,12 +42,6 @@ function renderPostMessagePage(payload: Record<string, unknown>) {
 </body></html>`;
 }
 
-// GET /api/integrations/github/callback
-// GitHub redirige ici une fois l'installation (ou sa mise à jour, y compris quand l'app
-// était déjà installée — voir "Redirect on update" côté settings de la GitHub App) terminée,
-// avec installation_id et setup_action. Le popup ouvert par le front se ferme ensuite de
-// lui-même après avoir transmis le résultat à la fenêtre d'origine (voir GithubConnectButton
-// côté frontend).
 githubPublicRouter.get("/api/integrations/github/callback", (req, res) => {
   const { installation_id, setup_action, state } = req.query;
 
@@ -82,11 +63,6 @@ githubPublicRouter.get("/api/integrations/github/callback", (req, res) => {
   res.send(renderPostMessagePage({ installationId: String(installation_id), projectId: projectId || null }));
 });
 
-// GET /api/integrations/github/installations
-// Liste les installations existantes de la GitHub App. Permet au front de proposer d'en
-// réutiliser une plutôt que de repasser par le flux GitHub (qui, une fois l'app déjà
-// installée sur le compte choisi, ne redirige jamais vers notre callback — voir
-// GithubConnectButton côté frontend).
 githubIntegrationRouter.get("/api/integrations/github/installations", async (_req, res) => {
   try {
     const installations = await listAppInstallations();
@@ -97,8 +73,6 @@ githubIntegrationRouter.get("/api/integrations/github/installations", async (_re
   }
 });
 
-// GET /api/integrations/github/repos?installationId=...
-// Liste les repos accessibles pour une installation donnée.
 githubIntegrationRouter.get("/api/integrations/github/repos", async (req, res) => {
   const installationId = Number(req.query.installationId);
 
@@ -115,8 +89,6 @@ githubIntegrationRouter.get("/api/integrations/github/repos", async (req, res) =
   }
 });
 
-// GET /api/integrations/github/branches?installationId=...&owner=...&repo=...
-// Liste les branches d'un repo précis.
 githubIntegrationRouter.get("/api/integrations/github/branches", async (req, res) => {
   const installationId = Number(req.query.installationId);
   const owner = String(req.query.owner ?? "");
@@ -135,8 +107,6 @@ githubIntegrationRouter.get("/api/integrations/github/branches", async (req, res
   }
 });
 
-// POST /api/projects/:projectId/github
-// Associe un dépôt GitHub (et sa branche) à un projet Guardian AI existant.
 githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res) => {
   const { projectId } = req.params;
   const { installationId, repoFullName, branch } = req.body ?? {};

@@ -1,17 +1,5 @@
-// Exploration d'un dépôt GitHub à la demande, sans clone : l'arborescence puis le
-// contenu des fichiers sont lus via l'API GitHub, fichier par fichier, uniquement pour
-// ceux jugés pertinents. Sert de base commune à l'explication/triage par l'IA locale et
-// à la correction par l'IA distante (voir fix-suggestion.service.ts) — toutes naviguent
-// dans le repo via ces mêmes fonctions plutôt que de recevoir tout le code d'un coup.
-
 import { getInstallationOctokit } from "./github-app.service";
 
-// Taille max d'un fichier qu'on accepte de lire en entier. Au-delà, un fichier trop gros
-// doit être lu par extraits ciblés via getFileContentRange plutôt qu'en entier — sans quoi
-// même un modèle distant capable (GPT-4.1) a été observé dériver sur un très gros fichier
-// (relecture du même fichier, puis recherche de chemins hallucinés, voir JOURNAL.md).
-// 100 Ko reste confortable pour un modèle à grand contexte (GPT-4.1) tout en écartant les
-// cas extrêmes (fichiers générés, minifiés, etc.).
 const MAX_FILE_SIZE_BYTES = 100 * 1024;
 
 export type RepoTreeEntry = {
@@ -19,9 +7,6 @@ export type RepoTreeEntry = {
   type: "blob" | "tree";
 };
 
-// Récupère l'arborescence complète d'un repo (chemins de tous les fichiers et dossiers)
-// en un seul appel, à une branche/ref donnée. Sert de point de départ à l'exploration :
-// l'IA choisit ensuite quels fichiers lire réellement via getFileContent.
 export async function getRepoTree(
   installationId: number,
   params: { owner: string; repo: string; ref: string }
@@ -52,8 +37,6 @@ export type FileContentResult =
   | { ok: true; path: string; content: string }
   | { ok: false; path: string; reason: "not_found" | "too_large" | "not_a_file"; totalLines?: number };
 
-// Récupère le contenu brut d'un fichier (texte + taille), sans limite — usage interne,
-// partagé par getFileContent et getFileContentRange.
 async function fetchRawFile(
   installationId: number,
   params: { owner: string; repo: string; path: string; ref: string }
@@ -82,11 +65,6 @@ async function fetchRawFile(
   }
 }
 
-// Lit le contenu d'un fichier précis du repo, à une branche/ref donnée. Retourne un
-// résultat typé plutôt que de lever une exception : un chemin invalide ou un fichier
-// trop volumineux sont des issues attendues pendant l'exploration, pas des erreurs.
-// Si le fichier dépasse la taille max, "too_large" indique aussi son nombre total de
-// lignes, pour orienter vers getFileContentRange plutôt que vers une impasse.
 export async function getFileContent(
   installationId: number,
   params: { owner: string; repo: string; path: string; ref: string }
@@ -109,9 +87,6 @@ export type FileContentRangeResult =
   | { ok: true; path: string; content: string; startLine: number; endLine: number; totalLines: number }
   | { ok: false; path: string; reason: "not_found" | "not_a_file" };
 
-// Lit uniquement une plage de lignes d'un fichier, quelle que soit sa taille totale —
-// pensé pour cibler la zone signalée par une stack trace (fichier + numéro de ligne) sans
-// jamais charger un fichier volumineux en entier dans le contexte du modèle.
 export async function getFileContentRange(
   installationId: number,
   params: { owner: string; repo: string; path: string; ref: string; startLine: number; endLine: number }

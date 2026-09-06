@@ -1,7 +1,3 @@
-// Script de test isolé : vérifie que le triage local (Ollama) distingue bien un vrai
-// problème d'un faux positif, et produit une explication claire dans le premier cas.
-// À lancer avec : npx tsx scripts/test-log-triage.ts
-
 import "dotenv/config";
 import { triageLog } from "../src/services/log-triage.service";
 

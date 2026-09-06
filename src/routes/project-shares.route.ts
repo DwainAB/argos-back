@@ -3,9 +3,6 @@ import { ProjectShareError, listShares, shareProject, unshareProject } from "../
 
 export const projectSharesRouter = Router();
 
-// POST /api/projects/:projectId/shares
-// Partage un projet (d'un compte organisation) avec un email — accès à ce seul projet,
-// jamais une adhésion à toute l'organisation.
 projectSharesRouter.post("/api/projects/:projectId/shares", async (req, res) => {
   const { projectId } = req.params;
 
@@ -21,8 +18,6 @@ projectSharesRouter.post("/api/projects/:projectId/shares", async (req, res) => 
   }
 });
 
-// GET /api/projects/:projectId/shares
-// Liste les partages d'un projet, réservé à son propriétaire.
 projectSharesRouter.get("/api/projects/:projectId/shares", async (req, res) => {
   const { projectId } = req.params;
 
@@ -38,8 +33,6 @@ projectSharesRouter.get("/api/projects/:projectId/shares", async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:projectId/shares/:shareId
-// Retire un partage.
 projectSharesRouter.delete("/api/projects/:projectId/shares/:shareId", async (req, res) => {
   const { projectId, shareId } = req.params;
 

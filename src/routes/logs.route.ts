@@ -6,15 +6,6 @@ import { projectAccessFilter } from "../services/project-access.service";
 
 export const logsRouter = Router();
 
-// POST /api/logs/:logEntryId/explain
-// Explique un log en langage clair, à la demande (bouton "Explication" sur un log dans
-// l'interface). Si une explication existe déjà (aiSummary, remplie automatiquement pour
-// les logs critical/warning par le triage, voir log-triage.service.ts), elle est
-// renvoyée telle quelle sans rappeler l'IA (réponse JSON classique, immédiate). Sinon,
-// l'IA locale est interrogée et streamée au client au fil du texte généré (réponse
-// chunked en texte brut, pas de JSON) pour que l'explication s'affiche progressivement
-// au lieu d'attendre la fin de la génération. Le résultat complet est sauvegardé sur le
-// log une fois le stream terminé, pour les prochaines consultations.
 logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
   const { logEntryId } = req.params;
 
@@ -51,8 +42,6 @@ logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
   }
 });
 
-// GET /api/projects/:projectId/logs
-// Renvoie les logs stockés en base pour un projet, du plus récent au plus ancien.
 logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
   const { projectId } = req.params;
   const limit = Math.min(Number(req.query.limit) || 100, 500);
@@ -77,9 +66,6 @@ logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
   }
 });
 
-// GET /api/projects/:projectId/overview
-// Statistiques affichées sur la page d'aperçu du projet : dernier déploiement (Railway,
-// à la demande) et compteurs d'erreurs/avertissements sur les dernières 24h (base locale).
 logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   const { projectId } = req.params;
 
@@ -116,12 +102,6 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   }
 });
 
-// GET /api/projects
-// Liste les projets appartenant à l'utilisateur courant, plus ceux partagés avec lui
-// (voir ProjectShare) — un compte organisation peut partager un projet précis avec un
-// compte personnel, qui le voit alors apparaître ici mélangé à ses propres projets.
-// Inclut le propriétaire (type de compte + nom d'organisation) pour que le front puisse
-// grouper l'affichage par section "Personnel" / nom de l'organisation.
 logsRouter.get("/api/projects", async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
@@ -146,8 +126,6 @@ logsRouter.get("/api/projects", async (req, res) => {
   }
 });
 
-// PATCH /api/projects/:projectId
-// Met à jour les informations générales d'un projet (pour l'instant, uniquement le nom).
 logsRouter.patch("/api/projects/:projectId", async (req, res) => {
   const { projectId } = req.params;
   const { name } = req.body;

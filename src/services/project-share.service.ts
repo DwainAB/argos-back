@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { sendProjectShareEmail } from "./email.service";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -17,9 +18,6 @@ function assertValidEmail(email: unknown): asserts email is string {
   }
 }
 
-// Vérifie que le projet appartient bien au compte demandeur et que ce compte est de type
-// "organization" — un compte personnel ne peut pas partager de projet. Renvoie le projet
-// si tout est en ordre.
 async function assertCanShare(projectId: string, ownerUserId: string) {
   const [project, owner] = await Promise.all([
     prisma.project.findFirst({ where: { id: projectId, userId: ownerUserId } }),
@@ -34,17 +32,14 @@ async function assertCanShare(projectId: string, ownerUserId: string) {
     throw new ProjectShareError("Seul un compte organisation peut partager un projet.", 403);
   }
 
-  return project;
+  return { project, owner };
 }
 
-// Partage un projet avec un email. Si un compte personnel existe déjà pour cet email,
-// l'accès est actif immédiatement ; sinon il reste en attente et s'active automatiquement
-// à l'inscription (voir auth.service.ts::signup).
 export async function shareProject(input: { projectId: string; ownerUserId: string; email: unknown }) {
   const { projectId, ownerUserId, email } = input;
 
   assertValidEmail(email);
-  await assertCanShare(projectId, ownerUserId);
+  const { project, owner } = await assertCanShare(projectId, ownerUserId);
 
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -54,8 +49,9 @@ export async function shareProject(input: { projectId: string; ownerUserId: stri
     throw new ProjectShareError("Impossible de partager un projet avec un compte organisation.", 422);
   }
 
+  let share;
   try {
-    return await prisma.projectShare.create({
+    share = await prisma.projectShare.create({
       data: {
         projectId,
         email: normalizedEmail,
@@ -63,12 +59,19 @@ export async function shareProject(input: { projectId: string; ownerUserId: stri
       },
     });
   } catch (err) {
-    // Contrainte unique [projectId, email] : déjà partagé avec cet email.
     if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
       throw new ProjectShareError("Ce projet est déjà partagé avec cet email.", 409);
     }
     throw err;
   }
+
+  sendProjectShareEmail({
+    to: normalizedEmail,
+    projectName: project.name,
+    organizationName: owner?.organizationName ?? "Une organisation",
+  }).catch((err) => console.error(`Erreur lors de l'envoi de l'email de partage à ${normalizedEmail} :`, err));
+
+  return share;
 }
 
 export async function unshareProject(input: { projectId: string; ownerUserId: string; shareId: string }) {

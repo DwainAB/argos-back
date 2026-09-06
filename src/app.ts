@@ -13,8 +13,6 @@ import { projectSharesRouter } from "./routes/project-shares.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
-// Construit l'application Express, sans la démarrer. Permet de la tester
-// indépendamment d'un vrai serveur HTTP (utile pour les tests d'intégration futurs).
 export function createApp() {
   const app = express();
 
@@ -23,17 +21,11 @@ export function createApp() {
   app.use(cookieParser());
 
   app.use(healthRouter);
-  // Routes d'authentification : /signup et /login doivent rester accessibles sans
-  // session ; /me applique elle-même authMiddleware (voir auth.route.ts).
+
   app.use(authRouter);
-  // /start et /callback GitHub : appelées par navigation directe du navigateur (popup,
-  // redirection depuis github.com), pas par un fetch avec le cookie de session
-  // applicatif — doivent rester accessibles sans authMiddleware (voir leur commentaire
-  // dans github-integration.route.ts).
+
   app.use(githubPublicRouter);
 
-  // Tout ce qui suit nécessite une session valide (req.userId), chaque route filtrant
-  // ensuite ses propres ressources par utilisateur.
   app.use(authMiddleware);
   app.use(railwayIntegrationRouter);
   app.use(railwayProjectTokenRouter);
