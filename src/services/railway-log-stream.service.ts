@@ -3,8 +3,9 @@ import WebSocket from "ws";
 import { prisma } from "../lib/prisma";
 import { processIncomingLog, type GroupedLog } from "./log-grouper.service";
 import { triageLog } from "./log-triage.service";
-import { listProjectRecipients } from "./project-access.service";
+import { listProjectPhoneRecipients, listProjectRecipients } from "./project-access.service";
 import { sendAlertEmail } from "./email.service";
+import { sendAlertSms } from "./sms.service";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -121,15 +122,23 @@ async function notifyProjectRecipients(projectId: string, level: string, explana
   const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
   if (!project) return;
 
-  const recipients = await listProjectRecipients(projectId);
+  const [recipients, phoneRecipients] = await Promise.all([
+    listProjectRecipients(projectId),
+    listProjectPhoneRecipients(projectId),
+  ]);
 
-  await Promise.all(
-    recipients.map((to) =>
+  await Promise.all([
+    ...recipients.map((to) =>
       sendAlertEmail({ to, projectName: project.name, level, explanation }).catch((err) =>
         console.error(`Erreur lors de l'envoi de l'email d'alerte à ${to} :`, err)
       )
-    )
-  );
+    ),
+    ...phoneRecipients.map((to) =>
+      sendAlertSms({ to, projectName: project.name, level, explanation }).catch((err) =>
+        console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
+      )
+    ),
+  ]);
 }
 
 const activeClients = new Map<string, Client>();

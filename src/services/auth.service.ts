@@ -10,6 +10,9 @@ const TOKEN_TTL = "7d";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
+// Format E.164 (ex: +33612345678), requis par Twilio pour l'envoi de SMS.
+const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+
 export class AuthError extends Error {
   constructor(
     message: string,
@@ -40,6 +43,12 @@ function assertNonEmpty(value: unknown, fieldLabel: string): asserts value is st
 function assertValidAccountType(accountType: unknown): asserts accountType is "personal" | "organization" {
   if (accountType !== "personal" && accountType !== "organization") {
     throw new AuthError("Type de compte invalide.", 400);
+  }
+}
+
+function assertValidPhone(phone: unknown): asserts phone is string {
+  if (typeof phone !== "string" || !PHONE_REGEX.test(phone)) {
+    throw new AuthError("Numéro de téléphone invalide : utilisez le format international, ex. +33612345678.", 400);
   }
 }
 
@@ -137,6 +146,17 @@ export async function signup(input: {
   });
 
   return prisma.user.findUniqueOrThrow({ where: { id: createdUserId }, include: { membership: true } });
+}
+
+export async function updatePhone(userId: string, phone: unknown) {
+  // Un numéro vide efface le téléphone enregistré (désactive les SMS pour ce compte).
+  if (phone === null || phone === "") {
+    return prisma.user.update({ where: { id: userId }, data: { phone: null }, include: { membership: true } });
+  }
+
+  assertValidPhone(phone);
+
+  return prisma.user.update({ where: { id: userId }, data: { phone }, include: { membership: true } });
 }
 
 export async function login(input: { email: unknown; password: unknown }) {
