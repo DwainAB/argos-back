@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { fetchLatestDeployment } from "../services/railway-project-token.service";
 import { explainLog } from "../services/log-explanation.service";
 import { projectAccessFilter } from "../services/project-access.service";
+import { assertCanManageProject, OrganizationError } from "../services/organization.service";
 
 export const logsRouter = Router();
 
@@ -11,7 +12,7 @@ logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
 
   try {
     const logEntry = await prisma.logEntry.findFirst({
-      where: { id: logEntryId, project: projectAccessFilter(req.userId as string) },
+      where: { id: logEntryId, project: await projectAccessFilter(req.userId as string) },
     });
 
     if (!logEntry) {
@@ -47,7 +48,7 @@ logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -70,7 +71,7 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   const { projectId } = req.params;
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -105,7 +106,7 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
 logsRouter.get("/api/projects", async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
-      where: projectAccessFilter(req.userId as string),
+      where: await projectAccessFilter(req.userId as string),
       select: {
         id: true,
         name: true,
@@ -135,11 +136,13 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
   }
 
   try {
-    const existing = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
+    const existing = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
 
     if (!existing) {
       return res.status(404).json({ error: "Projet introuvable." });
     }
+
+    await assertCanManageProject(req.userId as string, existing);
 
     const project = await prisma.project.update({
       where: { id: projectId },
@@ -158,7 +161,34 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
 
     res.json({ project });
   } catch (err) {
+    if (err instanceof OrganizationError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     console.error(`Erreur lors de la mise à jour du projet ${projectId} :`, err);
     res.status(500).json({ error: "Impossible de mettre à jour le projet." });
+  }
+});
+
+logsRouter.delete("/api/projects/:projectId", async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    const existing = await prisma.project.findFirst({ where: { id: projectId, ...(await projectAccessFilter(req.userId as string)) } });
+
+    if (!existing) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
+    await assertCanManageProject(req.userId as string, existing);
+
+    await prisma.project.delete({ where: { id: projectId } });
+
+    res.status(204).end();
+  } catch (err) {
+    if (err instanceof OrganizationError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error(`Erreur lors de la suppression du projet ${projectId} :`, err);
+    res.status(500).json({ error: "Impossible de supprimer le projet." });
   }
 });

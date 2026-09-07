@@ -9,6 +9,7 @@ import {
   listRepoBranches,
 } from "../services/github-app.service";
 import { projectAccessFilter } from "../services/project-access.service";
+import { assertCanManageProject, OrganizationError } from "../services/organization.service";
 
 export const githubPublicRouter = Router();
 export const githubIntegrationRouter = Router();
@@ -116,11 +117,13 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
   }
 
   try {
-    const existing = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
+    const existing = await prisma.project.findFirst({ where: { id: projectId, ...(await projectAccessFilter(req.userId as string)) } });
 
     if (!existing) {
       return res.status(404).json({ error: "Projet introuvable." });
     }
+
+    await assertCanManageProject(req.userId as string, existing);
 
     const project = await prisma.project.update({
       where: { id: projectId },
@@ -133,6 +136,9 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
 
     res.json({ project });
   } catch (err) {
+    if (err instanceof OrganizationError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     console.error(`Erreur lors de l'association GitHub du projet ${projectId} :`, err);
     res.status(500).json({ error: "Impossible d'associer le dépôt GitHub à ce projet." });
   }

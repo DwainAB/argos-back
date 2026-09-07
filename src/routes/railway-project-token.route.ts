@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { fetchLatestDeploymentLogsWithProjectToken } from "../services/railway-project-token.service";
 import { startLogStreamForProject } from "../services/railway-log-stream.service";
+import { getMembershipForUser } from "../services/organization.service";
 
 export const railwayProjectTokenRouter = Router();
 
@@ -10,6 +11,11 @@ railwayProjectTokenRouter.post("/api/integrations/railway/connect-with-token", a
 
   if (!projectToken || !serviceId || !environmentId) {
     return res.status(400).json({ error: "projectToken, serviceId et environmentId sont requis." });
+  }
+
+  const membership = await getMembershipForUser(req.userId as string);
+  if (membership && membership.role !== "admin") {
+    return res.status(403).json({ error: "Seul un administrateur de l'organisation peut ajouter un projet." });
   }
 
   try {
@@ -22,6 +28,7 @@ railwayProjectTokenRouter.post("/api/integrations/railway/connect-with-token", a
         railwayServiceId: serviceId,
         railwayEnvironmentId: environmentId,
         userId: req.userId as string,
+        organizationId: membership?.organizationId,
       },
     });
 

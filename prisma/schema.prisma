@@ -22,6 +22,45 @@ model User {
   projects Project[]
 
   receivedProjectShares ProjectShare[]
+
+  membership OrganizationMembership?
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  members     OrganizationMembership[]
+  invitations OrganizationInvitation[]
+  projects    Project[]
+}
+
+model OrganizationMembership {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+}
+
+model OrganizationInvitation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  email     String
+  role      String   @default("user")
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, email])
+  @@index([email])
 }
 
 model Project {
@@ -39,16 +78,20 @@ model Project {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
   logs   LogEntry[]
   shares ProjectShare[]
 
   @@index([userId])
+  @@index([organizationId])
 }
 
 model ProjectShare {
   id        String  @id @default(uuid())
   projectId String
-  project   Project @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   email            String
   sharedWithUserId String?
@@ -78,7 +121,7 @@ model LogEntry {
   externalTimestamp DateTime?
 
   projectId String
-  project   Project @relation(fields: [projectId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   alert Alert?
 
@@ -100,7 +143,7 @@ model Alert {
   pullRequestUrl   String?
 
   logEntryId String   @unique
-  logEntry   LogEntry @relation(fields: [logEntryId], references: [id])
+  logEntry   LogEntry @relation(fields: [logEntryId], references: [id], onDelete: Cascade)
 
   @@index([status])
 }

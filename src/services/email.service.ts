@@ -146,6 +146,38 @@ export function sendProjectShareEmail(params: { to: string; projectName: string;
   });
 }
 
+export function sendOrganizationAddedEmail(params: { to: string; firstName: string; organizationName: string }) {
+  return send({
+    to: params.to,
+    subject: `Vous avez été ajouté à ${params.organizationName} sur Argos AI`,
+    html: layout({
+      preheader: `Vous faites maintenant partie de ${params.organizationName} sur Argos AI.`,
+      body: `
+        <p style="${TITLE}">Nouvelle organisation</p>
+        <p style="${TEXT}">Bonjour ${params.firstName},</p>
+        <p style="${TEXT_LAST}">Vous avez été ajouté à l'organisation <strong>${params.organizationName}</strong> sur Argos AI. Vous avez désormais accès à ses projets.</p>
+        ${button({ href: env.frontendUrl, label: "Accéder à mon tableau de bord" })}
+      `,
+    }),
+  });
+}
+
+export function sendOrganizationInvitationEmail(params: { to: string; organizationName: string }) {
+  return send({
+    to: params.to,
+    subject: `${params.organizationName} vous invite sur Argos AI`,
+    html: layout({
+      preheader: `${params.organizationName} vous invite à rejoindre son organisation sur Argos AI.`,
+      body: `
+        <p style="${TITLE}">Invitation à rejoindre une organisation</p>
+        <p style="${TEXT}"><strong>${params.organizationName}</strong> vous invite à rejoindre son organisation sur Argos AI.</p>
+        <p style="${TEXT_LAST}">Pour l'accepter, il vous suffit de créer un compte avec cette adresse email : vous serez automatiquement rattaché à l'organisation.</p>
+        ${button({ href: env.frontendUrl, label: "Créer mon compte" })}
+      `,
+    }),
+  });
+}
+
 export function sendAlertEmail(params: {
   to: string;
   projectName: string;
