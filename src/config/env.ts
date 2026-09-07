@@ -47,4 +47,12 @@ export const env = {
     apiKey: process.env.RESEND_API_KEY ?? "",
     fromEmail: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
   },
+  twilio: {
+    accountSid: process.env.TWILIO_ACCOUNT_SID ?? "",
+    authToken: process.env.TWILIO_AUTH_TOKEN ?? "",
+    fromPhoneNumber: process.env.TWILIO_FROM_PHONE_NUMBER ?? "",
+    // Compte trial (aucune carte ajoutée) : Twilio n'accepte que ses templates prédéfinis,
+    // pas de texte libre. À passer à "false" une fois le compte upgradé (voir sms.service.ts).
+    trialMode: process.env.TWILIO_TRIAL_MODE !== "false",
+  },
 };

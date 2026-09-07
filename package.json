@@ -28,6 +28,7 @@
     "jsonwebtoken": "^9.0.3",
     "openai": "^7.5.0",
     "resend": "^6.26.0",
+    "twilio": "^6.1.0",
     "ws": "^8.21.2"
   },
   "devDependencies": {
