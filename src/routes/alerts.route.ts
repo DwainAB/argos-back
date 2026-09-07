@@ -11,7 +11,7 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const resolved = req.query.resolved === "true";
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...projectAccessFilter(req.userId as string) } });
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -38,7 +38,7 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
       include: { logEntry: true },
     });
 
@@ -58,7 +58,7 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {
@@ -83,7 +83,7 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {
@@ -108,7 +108,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
       include: { logEntry: { include: { project: true } } },
     });
 
@@ -159,7 +159,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
       include: { logEntry: { include: { project: true } } },
     });
 
@@ -208,7 +208,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
 
   try {
     const alert = await prisma.alert.findFirst({
-      where: { id: alertId, logEntry: { project: projectAccessFilter(req.userId as string) } },
+      where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
     });
 
     if (!alert) {

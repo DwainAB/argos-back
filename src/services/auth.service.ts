@@ -96,7 +96,7 @@ export async function signup(input: {
 
   const passwordHash = await hashPassword(password);
 
-  return prisma.$transaction(async (tx) => {
+  const createdUserId = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         email: normalizedEmail,
@@ -108,15 +108,35 @@ export async function signup(input: {
       },
     });
 
+    if (accountType === "organization") {
+      const organization = await tx.organization.create({
+        data: { name: (organizationName as string).trim() },
+      });
+
+      await tx.organizationMembership.create({
+        data: { organizationId: organization.id, userId: user.id, role: "admin" },
+      });
+    }
+
     if (accountType === "personal") {
       await tx.projectShare.updateMany({
         where: { email: normalizedEmail, sharedWithUserId: null },
         data: { sharedWithUserId: user.id },
       });
+
+      const invitation = await tx.organizationInvitation.findFirst({ where: { email: normalizedEmail } });
+      if (invitation) {
+        await tx.organizationMembership.create({
+          data: { organizationId: invitation.organizationId, userId: user.id, role: invitation.role },
+        });
+        await tx.organizationInvitation.delete({ where: { id: invitation.id } });
+      }
     }
 
-    return user;
+    return user.id;
   });
+
+  return prisma.user.findUniqueOrThrow({ where: { id: createdUserId }, include: { membership: true } });
 }
 
 export async function login(input: { email: unknown; password: unknown }) {
@@ -127,7 +147,7 @@ export async function login(input: { email: unknown; password: unknown }) {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail }, include: { membership: true } });
   if (!user) {
     throw new AuthError("Email ou mot de passe incorrect.", 401);
   }

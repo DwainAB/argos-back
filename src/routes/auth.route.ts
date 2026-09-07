@@ -24,6 +24,7 @@ function toPublicUser(user: {
   accountType: string;
   organizationName: string | null;
   createdAt: Date;
+  membership?: { role: string } | null;
 }) {
   return {
     id: user.id,
@@ -34,6 +35,7 @@ function toPublicUser(user: {
     accountType: user.accountType,
     organizationName: user.organizationName,
     createdAt: user.createdAt,
+    organizationRole: user.membership?.role ?? null,
   };
 }
 
@@ -84,7 +86,7 @@ authRouter.post("/api/auth/logout", (_req, res) => {
 
 authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    const user = await prisma.user.findUnique({ where: { id: req.userId }, include: { membership: true } });
 
     if (!user) {
       return res.status(401).json({ error: "Authentification requise." });
