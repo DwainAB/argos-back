@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { AuthError, login, signAuthToken, signup, updatePhone } from "../services/auth.service";
 import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
 import { sendLoginNotificationEmail, sendWelcomeEmail } from "../services/email.service";
+import { hasActiveAccess } from "../services/subscription.service";
 
 export const authRouter = Router();
 
@@ -15,7 +16,22 @@ const SESSION_COOKIE_OPTIONS = {
   maxAge: SESSION_COOKIE_MAX_AGE,
 };
 
-function toPublicUser(user: {
+// L'abonnement d'un compte est le sien propre (compte personnel non membre d'une
+// organisation) ou celui, partagé, de l'organisation dont il est membre.
+async function findSubscriptionStatus(user: {
+  id: string;
+  membership?: { organizationId: string } | null;
+}): Promise<string | null> {
+  if (user.membership) {
+    const subscription = await prisma.subscription.findUnique({ where: { organizationId: user.membership.organizationId } });
+    return subscription?.status ?? null;
+  }
+
+  const subscription = await prisma.subscription.findUnique({ where: { userId: user.id } });
+  return subscription?.status ?? null;
+}
+
+async function toPublicUser(user: {
   id: string;
   email: string;
   firstName: string;
@@ -24,8 +40,10 @@ function toPublicUser(user: {
   accountType: string;
   organizationName: string | null;
   createdAt: Date;
-  membership?: { role: string } | null;
+  membership?: { role: string; organizationId: string } | null;
 }) {
+  const subscriptionStatus = await findSubscriptionStatus(user);
+
   return {
     id: user.id,
     email: user.email,
@@ -36,6 +54,8 @@ function toPublicUser(user: {
     organizationName: user.organizationName,
     createdAt: user.createdAt,
     organizationRole: user.membership?.role ?? null,
+    subscriptionStatus,
+    hasActiveSubscription: hasActiveAccess(subscriptionStatus ? { status: subscriptionStatus } : null),
   };
 }
 
@@ -49,7 +69,7 @@ authRouter.post("/api/auth/signup", async (req, res) => {
       console.error(`Erreur lors de l'envoi de l'email de bienvenue à ${user.email} :`, err)
     );
 
-    res.status(201).json({ user: toPublicUser(user) });
+    res.status(201).json({ user: await toPublicUser(user) });
   } catch (err) {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
@@ -69,7 +89,7 @@ authRouter.post("/api/auth/login", async (req, res) => {
       console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
     );
 
-    res.json({ user: toPublicUser(user) });
+    res.json({ user: await toPublicUser(user) });
   } catch (err) {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
@@ -92,7 +112,7 @@ authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
       return res.status(401).json({ error: "Authentification requise." });
     }
 
-    res.json({ user: toPublicUser(user) });
+    res.json({ user: await toPublicUser(user) });
   } catch (err) {
     console.error("Erreur lors de la récupération de l'utilisateur courant :", err);
     res.status(500).json({ error: "Impossible de récupérer l'utilisateur courant." });
@@ -102,7 +122,7 @@ authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
 authRouter.patch("/api/auth/me", authMiddleware, async (req, res) => {
   try {
     const user = await updatePhone(req.userId as string, req.body?.phone);
-    res.json({ user: toPublicUser(user) });
+    res.json({ user: await toPublicUser(user) });
   } catch (err) {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });

@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { suggestFix } from "../services/fix-suggestion.service";
 import { createFixPullRequest } from "../services/github-pr.service";
 import { projectAccessFilter } from "../services/project-access.service";
+import { getSubscriptionForRequestingUser, tryConsumeFixQuota } from "../services/subscription.service";
 
 export const alertsRouter = Router();
 
@@ -120,6 +121,15 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
 
     if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {
       return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub connecté." });
+    }
+
+    const subscription = await getSubscriptionForRequestingUser(req.userId as string);
+    if (subscription) {
+      const requestingUser = await prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } });
+      const allowed = await tryConsumeFixQuota(subscription, requestingUser?.email ?? "");
+      if (!allowed) {
+        return res.status(429).json({ error: "Quota mensuel de corrections IA atteint pour votre abonnement." });
+      }
     }
 
     const [owner, repo] = project.githubRepo.split("/");

@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
+import { createPendingSubscription } from "./subscription.service";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -105,7 +106,11 @@ export async function signup(input: {
 
   const passwordHash = await hashPassword(password);
 
-  const createdUserId = await prisma.$transaction(async (tx) => {
+  const {
+    userId: createdUserId,
+    organizationId: createdOrganizationId,
+    joinedOrganization,
+  } = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: {
         email: normalizedEmail,
@@ -117,10 +122,14 @@ export async function signup(input: {
       },
     });
 
+    let organizationId: string | null = null;
+    let joinedOrganization = false;
+
     if (accountType === "organization") {
       const organization = await tx.organization.create({
         data: { name: (organizationName as string).trim() },
       });
+      organizationId = organization.id;
 
       await tx.organizationMembership.create({
         data: { organizationId: organization.id, userId: user.id, role: "admin" },
@@ -139,11 +148,35 @@ export async function signup(input: {
           data: { organizationId: invitation.organizationId, userId: user.id, role: invitation.role },
         });
         await tx.organizationInvitation.delete({ where: { id: invitation.id } });
+        joinedOrganization = true;
       }
     }
 
-    return user.id;
+    return { userId: user.id, organizationId, joinedOrganization };
   });
+
+  // Créé après la transaction (appel réseau vers Stripe, à ne pas garder ouvert dans une
+  // transaction DB) — un compte "organization" nouvellement créé n'a, à ce stade, jamais
+  // encore de membership autre que le sien : l'abonnement Business est donc toujours porté
+  // par l'organisation qu'il vient de créer, jamais par un membre qui la rejoint ensuite.
+  // Un compte "personal" qui rejoint immédiatement une organisation via une invitation en
+  // attente n'a pas non plus besoin de son propre abonnement Solo : il est déjà couvert par
+  // l'abonnement Business de l'organisation qu'il vient de rejoindre.
+  if (accountType === "organization" && createdOrganizationId) {
+    await createPendingSubscription({
+      ownerType: "organization",
+      ownerId: createdOrganizationId,
+      email: normalizedEmail,
+      plan: "business",
+    });
+  } else if (accountType === "personal" && !joinedOrganization) {
+    await createPendingSubscription({
+      ownerType: "user",
+      ownerId: createdUserId,
+      email: normalizedEmail,
+      plan: "solo",
+    });
+  }
 
   return prisma.user.findUniqueOrThrow({ where: { id: createdUserId }, include: { membership: true } });
 }

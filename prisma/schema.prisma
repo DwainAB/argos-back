@@ -24,6 +24,8 @@ model User {
   receivedProjectShares ProjectShare[]
 
   membership OrganizationMembership?
+
+  subscription Subscription?
 }
 
 model Organization {
@@ -34,6 +36,39 @@ model Organization {
   members     OrganizationMembership[]
   invitations OrganizationInvitation[]
   projects    Project[]
+
+  subscription Subscription?
+}
+
+// Un plan Solo (userId renseigné) est porté par un compte personnel ; un plan Business
+// (organizationId renseigné) est porté par une organisation et partagé par tous ses
+// membres — jamais les deux à la fois sur un même abonnement.
+model Subscription {
+  id String @id @default(uuid())
+
+  userId         String?       @unique
+  user           User?         @relation(fields: [userId], references: [id])
+  organizationId String?       @unique
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  plan   String @default("solo")
+  status String @default("trialing")
+
+  stripeCustomerId     String  @unique
+  stripeSubscriptionId String? @unique
+
+  currentPeriodEnd DateTime?
+
+  smsUsedThisPeriod   Int @default(0)
+  fixesUsedThisPeriod Int @default(0)
+
+  smsLimitWarningsSentThisPeriod   Int @default(0)
+  fixesLimitWarningsSentThisPeriod Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
 }
 
 model OrganizationMembership {
