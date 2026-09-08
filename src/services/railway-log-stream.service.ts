@@ -6,6 +6,7 @@ import { triageLog } from "./log-triage.service";
 import { listProjectPhoneRecipients, listProjectRecipients } from "./project-access.service";
 import { sendAlertEmail } from "./email.service";
 import { sendAlertSms } from "./sms.service";
+import { getSubscriptionForProject, tryConsumeSmsQuota } from "./subscription.service";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -119,7 +120,10 @@ async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log
 }
 
 async function notifyProjectRecipients(projectId: string, level: string, explanation: string) {
-  const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } });
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { name: true, userId: true, organizationId: true, user: { select: { email: true } } },
+  });
   if (!project) return;
 
   const [recipients, phoneRecipients] = await Promise.all([
@@ -127,18 +131,30 @@ async function notifyProjectRecipients(projectId: string, level: string, explana
     listProjectPhoneRecipients(projectId),
   ]);
 
-  await Promise.all([
-    ...recipients.map((to) =>
-      sendAlertEmail({ to, projectName: project.name, level, explanation }).catch((err) =>
-        console.error(`Erreur lors de l'envoi de l'email d'alerte à ${to} :`, err)
-      )
-    ),
-    ...phoneRecipients.map((to) =>
-      sendAlertSms({ to, projectName: project.name, level, explanation }).catch((err) =>
-        console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
-      )
-    ),
-  ]);
+  const emailNotifications = recipients.map((to) =>
+    sendAlertEmail({ to, projectName: project.name, level, explanation }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email d'alerte à ${to} :`, err)
+    )
+  );
+
+  // Le quota SMS se consomme une fois par alerte (pas une fois par destinataire) : soit
+  // tous les destinataires reçoivent le SMS, soit aucun, pour ne pas épuiser le quota plus
+  // vite sur un projet à plusieurs membres.
+  let smsNotifications: Promise<void>[] = [];
+  if (phoneRecipients.length > 0) {
+    const subscription = await getSubscriptionForProject(project);
+    const smsAllowed = subscription ? await tryConsumeSmsQuota(subscription, project.user.email) : true;
+
+    if (smsAllowed) {
+      smsNotifications = phoneRecipients.map((to) =>
+        sendAlertSms({ to, projectName: project.name, level, explanation }).catch((err) =>
+          console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
+        )
+      );
+    }
+  }
+
+  await Promise.all([...emailNotifications, ...smsNotifications]);
 }
 
 const activeClients = new Map<string, Client>();

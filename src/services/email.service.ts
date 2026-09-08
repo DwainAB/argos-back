@@ -178,6 +178,40 @@ export function sendOrganizationInvitationEmail(params: { to: string; organizati
   });
 }
 
+export function sendUsageLimitWarningEmail(params: { to: string; resource: string; used: number; limit: number }) {
+  return send({
+    to: params.to,
+    subject: `Vous approchez de votre quota ${params.resource} sur Argos AI`,
+    html: layout({
+      preheader: `${params.used} sur ${params.limit} ${params.resource} utilisés ce mois-ci.`,
+      badge: { label: "QUOTA À 80%", color: "#B45309", bg: BRAND.warningSoft },
+      body: `
+        <p style="${TITLE}">Vous approchez de votre quota</p>
+        <p style="${TEXT}">Vous avez utilisé <strong>${params.used} sur ${params.limit}</strong> ${params.resource} inclus dans votre abonnement ce mois-ci.</p>
+        <p style="${TEXT_LAST}">Passé cette limite, ${params.resource} ne seront plus envoyés jusqu'au renouvellement de votre période — les autres notifications (email) continuent normalement.</p>
+        ${button({ href: `${env.frontendUrl}/dashboard/organizations/billing`, label: "Voir mon abonnement" })}
+      `,
+    }),
+  });
+}
+
+export function sendUsageLimitReachedEmail(params: { to: string; resource: string; limit: number }) {
+  return send({
+    to: params.to,
+    subject: `Quota ${params.resource} atteint sur Argos AI`,
+    html: layout({
+      preheader: `Votre quota de ${params.limit} ${params.resource} pour ce mois est atteint.`,
+      badge: { label: "QUOTA ATTEINT", color: BRAND.critical, bg: BRAND.criticalSoft },
+      body: `
+        <p style="${TITLE}">Quota atteint</p>
+        <p style="${TEXT}">Votre quota de <strong>${params.limit} ${params.resource}</strong> inclus dans votre abonnement est atteint pour ce mois-ci.</p>
+        <p style="${TEXT_LAST}">${params.resource} supplémentaires ne seront plus envoyés jusqu'au renouvellement de votre période — les autres notifications (email) continuent normalement.</p>
+        ${button({ href: `${env.frontendUrl}/dashboard/organizations/billing`, label: "Voir mon abonnement" })}
+      `,
+    }),
+  });
+}
+
 export function sendAlertEmail(params: {
   to: string;
   projectName: string;

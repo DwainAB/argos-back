@@ -55,4 +55,11 @@ export const env = {
     // pas de texte libre. À passer à "false" une fois le compte upgradé (voir sms.service.ts).
     trialMode: process.env.TWILIO_TRIAL_MODE !== "false",
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? "",
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+    // IDs des Price Stripe (Dashboard > Product catalog), un par plan/intervalle.
+    priceSolo: process.env.STRIPE_PRICE_SOLO ?? "",
+    priceBusiness: process.env.STRIPE_PRICE_BUSINESS ?? "",
+  },
 };

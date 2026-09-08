@@ -11,6 +11,8 @@ import { alertsRouter } from "./routes/alerts.route";
 import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
 import { projectSharesRouter } from "./routes/project-shares.route";
 import { organizationRouter } from "./routes/organization.route";
+import { subscriptionRouter } from "./routes/subscription.route";
+import { stripeWebhookRouter } from "./routes/stripe-webhook.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -18,6 +20,11 @@ export function createApp() {
   const app = express();
 
   app.use(cors({ origin: env.frontendUrl, credentials: true }));
+
+  // Monté avant express.json() : Stripe a besoin du corps brut, non parsé, pour vérifier
+  // la signature de la requête (voir stripe-webhook.route.ts).
+  app.use(stripeWebhookRouter);
+
   app.use(express.json());
   app.use(cookieParser());
 
@@ -35,6 +42,7 @@ export function createApp() {
   app.use(githubIntegrationRouter);
   app.use(projectSharesRouter);
   app.use(organizationRouter);
+  app.use(subscriptionRouter);
 
   app.use(notFoundMiddleware);
 
