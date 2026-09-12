@@ -1,9 +1,11 @@
 import { Router } from "express";
+import { prisma } from "../lib/prisma";
 import {
   QUOTAS,
   SubscriptionError,
   createBillingPortalSession,
   createCheckoutSession,
+  getOrCreateSubscriptionForRequestingUser,
   getSubscriptionForRequestingUser,
 } from "../services/subscription.service";
 
@@ -36,11 +38,8 @@ subscriptionRouter.get("/api/subscription/me", async (req, res) => {
 
 subscriptionRouter.post("/api/subscription/checkout", async (req, res) => {
   try {
-    const subscription = await getSubscriptionForRequestingUser(req.userId as string);
-
-    if (!subscription) {
-      return res.status(404).json({ error: "Aucun abonnement trouvé." });
-    }
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.userId } });
+    const subscription = await getOrCreateSubscriptionForRequestingUser({ userId: req.userId as string, email: user.email });
 
     const url = await createCheckoutSession(subscription.id);
     res.json({ url });

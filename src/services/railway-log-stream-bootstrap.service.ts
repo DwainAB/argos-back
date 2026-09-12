@@ -7,6 +7,7 @@ export async function bootstrapRailwayLogStreams() {
       railwayProjectToken: { not: null },
       railwayServiceId: { not: null },
       railwayEnvironmentId: { not: null },
+      archivedAt: null,
     },
   });
 

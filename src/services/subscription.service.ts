@@ -23,6 +23,9 @@ export const QUOTAS = {
   business: { sms: 60, fixes: 30 },
 } as const;
 
+// Nombre maximum de projets actifs (non archivés) sur le plan Solo — illimité sur Business.
+export const SOLO_PROJECT_LIMIT = 3;
+
 const USAGE_WARNING_THRESHOLD = 0.8;
 
 function requireStripe(): Stripe {
@@ -47,7 +50,7 @@ function subscriptionIdOfInvoice(invoice: Stripe.Invoice): string | null {
   return typeof subscription === "string" ? subscription : (subscription?.id ?? null);
 }
 
-function priceIdForPlan(plan: "solo" | "business"): string {
+export function priceIdForPlan(plan: "solo" | "business"): string {
   const priceId = plan === "solo" ? env.stripe.priceSolo : env.stripe.priceBusiness;
   if (!priceId) {
     throw new SubscriptionError(`Aucun Price Stripe configuré pour le plan ${plan}.`, 500);
@@ -80,19 +83,66 @@ export async function createPendingSubscription(input: {
   });
 }
 
+// Retrouve l'abonnement dont dépend l'utilisateur connecté, ou en crée un nouveau
+// ("incomplete") s'il n'en a aucun — cas normalement rare (abonnement supprimé après
+// l'inscription), l'unique création "normale" se faisant dans auth.service.ts::signup.
+// Un membre non-admin d'une organisation sans abonnement ne peut pas en créer un lui-même :
+// seul un administrateur engage la facturation de l'organisation.
+export async function getOrCreateSubscriptionForRequestingUser(input: { userId: string; email: string }) {
+  const { userId, email } = input;
+
+  const existing = await getSubscriptionForRequestingUser(userId);
+  if (existing) return existing;
+
+  const [membership, user] = await Promise.all([
+    prisma.organizationMembership.findUnique({ where: { userId } }),
+    prisma.user.findUniqueOrThrow({ where: { id: userId } }),
+  ]);
+
+  if (membership && membership.role !== "admin") {
+    throw new SubscriptionError(
+      "Votre organisation n'a pas d'abonnement actif — seul un administrateur peut en créer un.",
+      422,
+    );
+  }
+
+  try {
+    return await createPendingSubscription({
+      ownerType: membership ? "organization" : "user",
+      ownerId: membership ? membership.organizationId : userId,
+      email,
+      plan: membership || user.accountType === "organization" ? "business" : "solo",
+    });
+  } catch (err) {
+    // Contrainte unique (userId/organizationId) : un abonnement a été créé entre-temps par
+    // une requête concurrente (ex: double-clic) — on récupère celui-là plutôt que d'échouer.
+    if (err && typeof err === "object" && "code" in err && err.code === "P2002") {
+      const race = await getSubscriptionForRequestingUser(userId);
+      if (race) return race;
+    }
+    throw err;
+  }
+}
+
 // Crée la session Stripe Checkout vers laquelle rediriger l'utilisateur après l'inscription
-// (ou depuis la page facturation, s'il avait abandonné le paiement initial).
+// (ou depuis la page facturation, s'il avait abandonné le paiement initial). L'essai gratuit
+// Solo n'est accordé qu'une seule fois par compte (voir User.hasUsedTrial) — résilier puis
+// se réabonner ne permet pas d'en reprendre un nouveau. Le flag n'est marqué que lorsque le
+// webhook checkout.session.completed confirme que l'essai a réellement démarré côté Stripe
+// (voir handleStripeWebhookEvent) — une session abandonnée avant paiement ne "consomme" rien.
 export async function createCheckoutSession(subscriptionId: string) {
   const client = requireStripe();
 
   const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
 
+  const user = subscription.userId ? await prisma.user.findUnique({ where: { id: subscription.userId } }) : null;
+  const grantsTrial = subscription.plan === "solo" && user && !user.hasUsedTrial;
+
   const session = await client.checkout.sessions.create({
     mode: "subscription",
     customer: subscription.stripeCustomerId,
     line_items: [{ price: priceIdForPlan(subscription.plan as "solo" | "business"), quantity: 1 }],
-    subscription_data:
-      subscription.plan === "solo" ? { trial_period_days: SOLO_TRIAL_DAYS } : undefined,
+    subscription_data: grantsTrial ? { trial_period_days: SOLO_TRIAL_DAYS } : undefined,
     success_url: `${env.frontendUrl}/dashboard?checkout=success`,
     cancel_url: `${env.frontendUrl}/dashboard/organizations/billing?checkout=cancelled`,
   });
@@ -100,6 +150,115 @@ export async function createCheckoutSession(subscriptionId: string) {
   if (!session.url) {
     throw new SubscriptionError("Impossible de créer la session de paiement.", 502);
   }
+
+  return session.url;
+}
+
+// Récupère l'abonnement Stripe et l'identifiant de sa ligne unique (un abonnement = un
+// seul Price chez nous), communs à la prévisualisation et à l'application du changement.
+// Les webhooks tiennent notre base à jour au fil de l'eau, mais un changement de plan est
+// un moment assez sensible (ça engage un paiement) pour reconfirmer l'état réel directement
+// auprès de Stripe plutôt que de faire confiance aveuglément à notre dernière copie locale
+// — si elle s'avère périmée (webhook manqué), on la corrige au passage.
+async function requireStripeSubscriptionItem(
+  client: Stripe,
+  subscription: { id: string; stripeSubscriptionId: string | null; status: string },
+) {
+  if (!subscription.stripeSubscriptionId) {
+    throw new SubscriptionError("Aucun abonnement Stripe actif à modifier.", 422);
+  }
+
+  const stripeSubscription = await client.subscriptions.retrieve(subscription.stripeSubscriptionId);
+
+  if (stripeSubscription.status !== subscription.status) {
+    console.error(
+      `Statut désynchronisé pour l'abonnement ${subscription.id} : base="${subscription.status}", Stripe="${stripeSubscription.status}" — correction.`,
+    );
+    await prisma.subscription.update({ where: { id: subscription.id }, data: { status: stripeSubscription.status } });
+  }
+
+  // "past_due" (dernier paiement échoué, ex : 3D Secure refusée) reste autorisé à changer
+  // de plan : c'est précisément l'occasion de retenter un paiement pour régulariser. Seul
+  // "canceled" (et les autres statuts hors trialing/active/past_due) reste bloqué — dans
+  // ce cas il faut un nouvel abonnement complet, pas un simple changement de plan.
+  if (!hasActiveAccess({ status: stripeSubscription.status }) && stripeSubscription.status !== "past_due") {
+    throw new SubscriptionError("Votre abonnement n'est pas actif — impossible de changer de plan.", 422);
+  }
+
+  const itemId = stripeSubscription.items.data[0]?.id;
+
+  if (!itemId) {
+    throw new SubscriptionError("Impossible de localiser la ligne d'abonnement à modifier.", 500);
+  }
+
+  return { stripeSubscriptionId: subscription.stripeSubscriptionId, itemId };
+}
+
+// Une tentative précédente restée impayée (ex : authentification 3D Secure refusée) a pu
+// laisser une facture de proration ouverte — sans ce nettoyage, elle s'additionne à toute
+// nouvelle tentative (que ce soit une prévisualisation ou une confirmation réelle) au lieu
+// d'être remplacée, faisant dériver le montant affiché à chaque essai.
+async function voidStaleOpenInvoices(client: Stripe, stripeSubscriptionId: string) {
+  const openInvoices = await client.invoices.list({ subscription: stripeSubscriptionId, status: "open" });
+  for (const invoice of openInvoices.data) {
+    await client.invoices.voidInvoice(invoice.id).catch((err) =>
+      console.error(`Impossible d'annuler la facture de proration précédente ${invoice.id} :`, err),
+    );
+  }
+}
+
+// Calcule, sans rien facturer ni modifier quoi que ce soit, le montant exact qu'impliquerait
+// un changement de plan maintenant — à afficher à l'utilisateur avant qu'il ne confirme.
+// Négatif pour un downgrade (crédit), positif pour un upgrade (montant à payer).
+export async function previewPlanChange(subscriptionId: string, newPlan: "solo" | "business") {
+  const client = requireStripe();
+
+  const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+  const { stripeSubscriptionId, itemId } = await requireStripeSubscriptionItem(client, subscription);
+
+  await voidStaleOpenInvoices(client, stripeSubscriptionId);
+
+  const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
+
+  const preview = await client.invoices.createPreview({
+    subscription: stripeSubscriptionId,
+    subscription_details: {
+      items: [{ id: itemId, price: priceIdForPlan(newPlan) }],
+      proration_behavior: "always_invoice",
+      ...(stripeSubscription.status === "trialing" ? { trial_end: "now" as const } : {}),
+    },
+  });
+
+  return { amountDue: preview.amount_due, currency: preview.currency };
+}
+
+type PendingPlanChangeMetadata = {
+  organizationName?: string;
+  keepProjectIds?: string;
+};
+
+export async function createPlanChangePortalSession(
+  subscriptionId: string,
+  returnUrl: string,
+  metadata: PendingPlanChangeMetadata = {},
+): Promise<string> {
+  const client = requireStripe();
+
+  const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+  const { stripeSubscriptionId } = await requireStripeSubscriptionItem(client, subscription);
+
+  await voidStaleOpenInvoices(client, stripeSubscriptionId);
+
+  await client.subscriptions.update(stripeSubscriptionId, { metadata });
+
+  const session = await client.billingPortal.sessions.create({
+    customer: subscription.stripeCustomerId,
+    return_url: returnUrl,
+    flow_data: {
+      type: "subscription_update",
+      subscription_update: { subscription: stripeSubscriptionId },
+    },
+  });
 
   return session.url;
 }
@@ -275,6 +434,12 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
           currentPeriodEnd: currentPeriodEndOf(stripeSubscription),
         },
       });
+
+      // L'essai a réellement démarré (confirmé par Stripe, pas juste tenté) : ce compte ne
+      // pourra plus en obtenir un nouveau, même après résiliation et réabonnement.
+      if (stripeSubscription.status === "trialing" && subscription.userId) {
+        await prisma.user.update({ where: { id: subscription.userId }, data: { hasUsedTrial: true } });
+      }
       return;
     }
 
@@ -327,6 +492,22 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
           fixesLimitWarningsSentThisPeriod: 0,
         },
       });
+
+      const client = requireStripe();
+      const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
+      const activePriceId = stripeSubscription.items.data[0]?.price.id;
+      const newPlan =
+        activePriceId === priceIdForPlan("business")
+          ? "business"
+          : activePriceId === priceIdForPlan("solo")
+            ? "solo"
+            : null;
+
+      if (newPlan && newPlan !== subscription.plan) {
+        const { applyConfirmedPlanChange } = await import("./plan-change.service");
+        await applyConfirmedPlanChange(subscription.id, newPlan, stripeSubscription.metadata);
+      }
+
       return;
     }
 
@@ -340,7 +521,10 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       });
       if (!subscription) return;
 
-      await prisma.subscription.update({ where: { id: subscription.id }, data: { status: "past_due" } });
+      const client = requireStripe();
+      const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
+
+      await prisma.subscription.update({ where: { id: subscription.id }, data: { status: stripeSubscription.status } });
       return;
     }
 

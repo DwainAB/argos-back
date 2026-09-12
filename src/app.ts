@@ -12,6 +12,7 @@ import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-int
 import { projectSharesRouter } from "./routes/project-shares.route";
 import { organizationRouter } from "./routes/organization.route";
 import { subscriptionRouter } from "./routes/subscription.route";
+import { planChangeRouter } from "./routes/plan-change.route";
 import { stripeWebhookRouter } from "./routes/stripe-webhook.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
@@ -43,6 +44,7 @@ export function createApp() {
   app.use(projectSharesRouter);
   app.use(organizationRouter);
   app.use(subscriptionRouter);
+  app.use(planChangeRouter);
 
   app.use(notFoundMiddleware);
 

@@ -19,6 +19,11 @@ model User {
   accountType      String  @default("personal")
   organizationName String?
 
+  // Vrai dès qu'un essai gratuit Solo a été démarré pour ce compte (même annulé avant
+  // terme) — empêche d'en reprendre un nouveau si l'abonnement est résilié puis recréé.
+  // Business n'a pas d'essai, donc non concerné.
+  hasUsedTrial Boolean @default(false)
+
   projects Project[]
 
   receivedProjectShares ProjectShare[]
@@ -115,6 +120,11 @@ model Project {
 
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  // Renseigné quand un downgrade Business → Solo laisse ce projet au-delà de la limite du
+  // plan Solo : masqué de l'interface et de la collecte de logs tant qu'il est archivé,
+  // réactivé automatiquement (remis à null) si le compte repasse à Business.
+  archivedAt DateTime?
 
   logs   LogEntry[]
   shares ProjectShare[]

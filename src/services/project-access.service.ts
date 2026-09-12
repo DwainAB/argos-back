@@ -1,9 +1,13 @@
 import { prisma } from "../lib/prisma";
 
+// Un projet archivé (laissé au-delà de la limite du plan Solo après un downgrade depuis
+// Business, voir subscription-plan.service.ts) est masqué de toute liste/accès tant qu'il
+// n'est pas réactivé — jamais supprimé, mais invisible comme s'il n'existait plus.
 export async function projectAccessFilter(userId: string) {
   const membership = await prisma.organizationMembership.findUnique({ where: { userId } });
 
   return {
+    archivedAt: null,
     OR: [
       { userId },
       { shares: { some: { sharedWithUserId: userId } } },
