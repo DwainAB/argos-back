@@ -69,6 +69,8 @@ async function applyUpgradeToBusiness(userId: string, subscriptionId: string, or
       data: { organizationId: organization.id, archivedAt: null },
     });
 
+    await tx.projectShare.deleteMany({ where: { project: { userId } } });
+
     await tx.user.update({ where: { id: userId }, data: { accountType: "organization", organizationName } });
 
     await tx.subscription.update({
@@ -161,6 +163,8 @@ async function applyDowngradeToSolo(input: { userId: string; organizationId: str
     for (const project of projectsToArchive) {
       await tx.project.update({ where: { id: project.id }, data: { archivedAt: new Date() } });
     }
+
+    await tx.projectShare.deleteMany({ where: { project: { organizationId } } });
 
     await tx.project.updateMany({
       where: { organizationId },
