@@ -207,7 +207,10 @@ model Alert {
   proposedFilePath String? @db.Text
   proposedOldCode  String? @db.Text
   proposedNewCode  String? @db.Text
-  pullRequestUrl   String?
+  // Explication donnée par l'IA sur SA correction (pourquoi ce changement résout le
+  // problème) — distincte du champ `explanation` ci-dessus, qui explique le log lui-même.
+  proposedExplanation String? @db.Text
+  pullRequestUrl      String?
 
   logEntryId String   @unique
   logEntry   LogEntry @relation(fields: [logEntryId], references: [id], onDelete: Cascade)
