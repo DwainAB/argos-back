@@ -1,3 +1,4 @@
+import OpenAI from "openai";
 import { env } from "../config/env";
 
 export type LogTriageResult = {
@@ -13,19 +14,20 @@ On te donne un log déjà classé comme "critical" ou "warning" par un premier f
 2. Choisir la catégorie finale du log (finalCategory), qui remplace le classement initial : "info" si ce n'est qu'une information sans aucune action à prévoir (typiquement un faux positif anodin) ; "warning" si ça mérite qu'on y prête attention mais que ce n'est pas encore critique ; "critical" si c'est une panne ou un dysfonctionnement grave. Un faux positif n'est pas toujours "info" : une erreur utilisateur inhabituellement fréquente peut rester un "warning" à surveiller, à toi d'en juger.
 3. Si c'est un vrai problème, rédiger une explication courte et claire, compréhensible par quelqu'un qui ne lit pas le code, décrivant ce qui s'est probablement passé et sa gravité.
 
+L'explication doit toujours être rédigée en français, quelle que soit la langue du log source.
+
 Réponds UNIQUEMENT avec un objet JSON de la forme :
 {"isRealIssue": true ou false, "finalCategory": "info" ou "warning" ou "critical", "explanation": "..."}
 
 Si isRealIssue est false, "explanation" indique brièvement pourquoi ce n'est pas un problème réel. Si isRealIssue est true, "explanation" est le texte destiné à l'équipe (2-4 phrases, sans jargon inutile, sans supposition sur le code source que tu n'as pas vu).`;
 
 export async function triageLog(params: { level: string; category: string; message: string }): Promise<LogTriageResult> {
-  const response = await fetch(`${env.ollama.baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: env.ollama.model,
-      format: "json",
-      stream: false,
+  const client = new OpenAI({ apiKey: env.groq.apiKey, baseURL: env.groq.baseUrl });
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: env.groq.model,
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         {
@@ -33,19 +35,12 @@ export async function triageLog(params: { level: string; category: string; messa
           content: `Niveau brut : ${params.level}\nCatégorie (règles) : ${params.category}\nLog :\n\n${params.message}`,
         },
       ],
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    throw new Error(`Ollama a répondu avec le statut ${response.status}`);
-  }
-
-  const data = (await response.json()) as { message?: { content?: string } };
-  const raw = data.message?.content ?? "";
-
-  try {
+    const raw = completion.choices[0]?.message?.content ?? "";
     const parsed = JSON.parse(raw);
     const finalCategory = parsed?.finalCategory;
+
     if (
       typeof parsed?.isRealIssue === "boolean" &&
       typeof parsed?.explanation === "string" &&
@@ -54,11 +49,13 @@ export async function triageLog(params: { level: string; category: string; messa
       return { isRealIssue: parsed.isRealIssue, finalCategory, explanation: parsed.explanation };
     }
   } catch {
+    // Réponse Groq invalide, vide, ou requête échouée : repli prudent ci-dessous plutôt que
+    // de propager l'erreur — un triage manqué ne doit jamais bloquer l'ingestion du log.
   }
 
   return {
     isRealIssue: true,
     finalCategory: params.category === "critical" ? "critical" : "warning",
-    explanation: "Impossible d'obtenir une explication fiable de l'IA locale pour ce log ; à vérifier manuellement.",
+    explanation: "Impossible d'obtenir une explication fiable de l'IA pour ce log ; à vérifier manuellement.",
   };
 }
