@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { AuthError, login, signAuthToken, signup, updatePhone } from "../services/auth.service";
+import { AuthError, changePassword, login, signAuthToken, signup, updatePhone } from "../services/auth.service";
 import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
-import { sendLoginNotificationEmail, sendWelcomeEmail } from "../services/email.service";
+import { sendLoginNotificationEmail, sendPasswordChangedEmail, sendWelcomeEmail } from "../services/email.service";
 import { hasActiveAccess } from "../services/subscription.service";
 
 export const authRouter = Router();
@@ -129,5 +129,26 @@ authRouter.patch("/api/auth/me", authMiddleware, async (req, res) => {
     }
     console.error("Erreur lors de la mise à jour du numéro de téléphone :", err);
     res.status(500).json({ error: "Impossible de mettre à jour le numéro de téléphone." });
+  }
+});
+
+authRouter.patch("/api/auth/password", authMiddleware, async (req, res) => {
+  try {
+    const user = await changePassword(req.userId as string, {
+      currentPassword: req.body?.currentPassword,
+      newPassword: req.body?.newPassword,
+    });
+
+    sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`, err)
+    );
+
+    res.json({ user: await toPublicUser(user) });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error("Erreur lors du changement de mot de passe :", err);
+    res.status(500).json({ error: "Impossible de mettre à jour le mot de passe." });
   }
 });
