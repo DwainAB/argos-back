@@ -31,6 +31,23 @@ model User {
   membership OrganizationMembership?
 
   subscription Subscription?
+
+  passwordResetTokens PasswordResetToken[]
+}
+
+// Jeton à usage unique envoyé par email pour réinitialiser un mot de passe oublié (page de
+// login, utilisateur non connecté). Seul le hash du jeton est stocké : le jeton en clair ne
+// transite que dans le lien de l'email, jamais en base.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Organization {

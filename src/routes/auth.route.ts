@@ -1,9 +1,24 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { AuthError, changePassword, login, signAuthToken, signup, updatePhone } from "../services/auth.service";
+import {
+  AuthError,
+  changePassword,
+  login,
+  requestPasswordReset,
+  resetPassword,
+  signAuthToken,
+  signup,
+  updatePhone,
+} from "../services/auth.service";
 import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
-import { sendLoginNotificationEmail, sendPasswordChangedEmail, sendWelcomeEmail } from "../services/email.service";
+import {
+  sendLoginNotificationEmail,
+  sendPasswordChangedEmail,
+  sendPasswordResetEmail,
+  sendWelcomeEmail,
+} from "../services/email.service";
 import { hasActiveAccess } from "../services/subscription.service";
+import { env } from "../config/env";
 
 export const authRouter = Router();
 
@@ -102,6 +117,47 @@ authRouter.post("/api/auth/login", async (req, res) => {
 authRouter.post("/api/auth/logout", (_req, res) => {
   res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
   res.status(204).end();
+});
+
+authRouter.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const result = await requestPasswordReset(req.body?.email);
+
+    if (result) {
+      const resetUrl = `${env.frontendUrl}/reset-password?token=${result.token}`;
+      sendPasswordResetEmail({ to: (req.body?.email as string).trim().toLowerCase(), firstName: result.user.firstName, resetUrl }).catch(
+        (err) => console.error("Erreur lors de l'envoi de l'email de réinitialisation :", err)
+      );
+    }
+
+    // Réponse identique que l'email corresponde à un compte ou non, pour ne pas permettre
+    // de deviner quels emails sont inscrits (énumération de comptes).
+    res.json({ message: "Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé." });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error("Erreur lors de la demande de réinitialisation de mot de passe :", err);
+    res.status(500).json({ error: "Impossible de traiter cette demande." });
+  }
+});
+
+authRouter.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const user = await resetPassword({ token: req.body?.token, newPassword: req.body?.newPassword });
+
+    sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`, err)
+    );
+
+    res.json({ message: "Mot de passe réinitialisé avec succès." });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error("Erreur lors de la réinitialisation du mot de passe :", err);
+    res.status(500).json({ error: "Impossible de réinitialiser le mot de passe." });
+  }
 });
 
 authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
