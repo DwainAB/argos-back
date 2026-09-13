@@ -130,6 +130,22 @@ export function sendLoginNotificationEmail(params: { to: string; firstName: stri
   });
 }
 
+export function sendPasswordResetEmail(params: { to: string; firstName: string; resetUrl: string }) {
+  return send({
+    to: params.to,
+    subject: "Réinitialisation de votre mot de passe Argos AI",
+    html: layout({
+      preheader: "Un lien pour réinitialiser votre mot de passe vous a été envoyé.",
+      body: `
+        <p style="${TITLE}">Réinitialisation de mot de passe</p>
+        <p style="${TEXT}">Bonjour ${params.firstName},</p>
+        <p style="${TEXT_LAST}">Vous avez demandé à réinitialiser votre mot de passe Argos AI. Ce lien est valable une heure. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+        ${button({ href: params.resetUrl, label: "Réinitialiser mon mot de passe" })}
+      `,
+    }),
+  });
+}
+
 export function sendPasswordChangedEmail(params: { to: string; firstName: string }) {
   return send({
     to: params.to,

@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "node:crypto";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
 import { createPendingSubscription } from "./subscription.service";
@@ -7,6 +8,9 @@ import { createPendingSubscription } from "./subscription.service";
 const BCRYPT_ROUNDS = 10;
 
 const TOKEN_TTL = "7d";
+
+// Durée de validité d'un lien de réinitialisation de mot de passe (email "mot de passe oublié").
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -201,6 +205,64 @@ export async function changePassword(userId: string, input: { currentPassword: u
     data: { passwordHash },
     include: { membership: true },
   });
+}
+
+// Le jeton en clair ne transite que dans le lien de l'email : seul son hash est stocké en
+// base, pour qu'une fuite de la base ne permette pas de réinitialiser un mot de passe.
+function hashResetToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// Ne révèle jamais si l'email correspond à un compte existant (évite l'énumération de
+// comptes) : appelant et appelée se comportent pareil, qu'un email soit trouvé ou non.
+export async function requestPasswordReset(email: unknown): Promise<{ user: { id: string; firstName: string }; token: string } | null> {
+  assertValidEmail(email);
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!user) {
+    return null;
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashResetToken(token);
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+
+  await prisma.passwordResetToken.create({
+    data: { userId: user.id, tokenHash, expiresAt },
+  });
+
+  return { user: { id: user.id, firstName: user.firstName }, token };
+}
+
+export async function resetPassword(input: { token: unknown; newPassword: unknown }) {
+  const { token, newPassword } = input;
+
+  assertNonEmpty(token, "Le jeton de réinitialisation");
+  assertValidPassword(newPassword);
+
+  const tokenHash = hashResetToken(token as string);
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+
+  if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
+    throw new AuthError("Ce lien de réinitialisation est invalide ou expiré.", 400);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+
+  const [user] = await prisma.$transaction([
+    prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash },
+      include: { membership: true },
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: resetToken.id },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  return user;
 }
 
 export async function updatePhone(userId: string, phone: unknown) {
