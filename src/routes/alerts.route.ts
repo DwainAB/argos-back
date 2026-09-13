@@ -153,11 +153,12 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
         proposedFilePath: suggestion.filePath,
         proposedOldCode: suggestion.oldCode,
         proposedNewCode: suggestion.newCode,
+        proposedExplanation: suggestion.explanation,
       },
       include: { logEntry: true },
     });
 
-    res.json({ alert: updated, explanation: suggestion.explanation });
+    res.json({ alert: updated });
   } catch (err) {
     console.error(`Erreur lors de la demande de correction pour l'alerte ${alertId} :`, err);
     res.status(502).json({ error: "Impossible d'obtenir une proposition de correction." });
@@ -197,7 +198,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
       filePath: alert.proposedFilePath,
       oldCode: alert.proposedOldCode,
       newCode: alert.proposedNewCode,
-      explanation: alert.explanation,
+      explanation: alert.proposedExplanation ?? alert.explanation,
     });
 
     const updated = await prisma.alert.update({
