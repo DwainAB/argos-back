@@ -130,6 +130,21 @@ export function sendLoginNotificationEmail(params: { to: string; firstName: stri
   });
 }
 
+export function sendPasswordChangedEmail(params: { to: string; firstName: string }) {
+  return send({
+    to: params.to,
+    subject: "Votre mot de passe Argos AI a été modifié",
+    html: layout({
+      preheader: "Le mot de passe de votre compte vient d'être modifié.",
+      body: `
+        <p style="${TITLE}">Mot de passe modifié</p>
+        <p style="${TEXT}">Bonjour ${params.firstName},</p>
+        <p style="${TEXT_LAST}">Le mot de passe de votre compte Argos AI vient d'être modifié. Si ce n'est pas vous, contactez-nous dès que possible.</p>
+      `,
+    }),
+  });
+}
+
 export function sendProjectShareEmail(params: { to: string; projectName: string; organizationName: string }) {
   return send({
     to: params.to,

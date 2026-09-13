@@ -181,6 +181,28 @@ export async function signup(input: {
   return prisma.user.findUniqueOrThrow({ where: { id: createdUserId }, include: { membership: true } });
 }
 
+export async function changePassword(userId: string, input: { currentPassword: unknown; newPassword: unknown }) {
+  const { currentPassword, newPassword } = input;
+
+  assertNonEmpty(currentPassword, "Le mot de passe actuel");
+  assertValidPassword(newPassword);
+
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+
+  const currentPasswordMatches = await verifyPassword(currentPassword as string, user.passwordHash);
+  if (!currentPasswordMatches) {
+    throw new AuthError("Mot de passe actuel incorrect.", 401);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+    include: { membership: true },
+  });
+}
+
 export async function updatePhone(userId: string, phone: unknown) {
   // Un numéro vide efface le téléphone enregistré (désactive les SMS pour ce compte).
   if (phone === null || phone === "") {
