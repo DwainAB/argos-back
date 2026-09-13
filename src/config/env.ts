@@ -35,9 +35,13 @@ export const env = {
     redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
     privateKey: loadGithubPrivateKey(),
   },
-  ollama: {
-    baseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
-    model: process.env.OLLAMA_MODEL ?? "qwen2.5-coder:7b",
+  // Groq (console.groq.com) : héberge le triage/l'explication des logs — remplace l'IA
+  // locale Ollama initialement prévue (voir CAHIER_DES_CHARGES.md, décision du 2026-09-13).
+  // API compatible OpenAI, d'où le baseURL pointé dessus avec le SDK openai déjà en dépendance.
+  groq: {
+    apiKey: process.env.GROQ_API_KEY ?? "",
+    baseUrl: process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1",
+    model: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? "",
