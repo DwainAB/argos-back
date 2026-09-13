@@ -62,6 +62,12 @@ export const env = {
     priceSolo: process.env.STRIPE_PRICE_SOLO ?? "",
     priceBusiness: process.env.STRIPE_PRICE_BUSINESS ?? "",
   },
+  google: {
+    // Flux 100% frontend (Google Identity Services, bouton "Continuer avec Google" du
+    // login) : un id_token est vérifié côté serveur avec ce seul Client ID, jamais de
+    // client_secret ni d'échange de code — voir google-oauth.service.ts.
+    oauthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
+  },
   logRetention: {
     // Durée de conservation des logs (LogEntry) côté Argos AI, indépendante de la
     // rétention Railway. Au-delà, les logs sont purgés définitivement (voir log-retention.job.ts).

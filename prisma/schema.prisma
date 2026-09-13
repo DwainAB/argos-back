@@ -16,6 +16,11 @@ model User {
   phone        String?
   createdAt    DateTime @default(now())
 
+  // Identifiant Google (claim "sub" du token), renseigné dès qu'un compte existant se
+  // connecte au moins une fois via Google — la connexion Google ne crée jamais de compte,
+  // elle ne fait que se lier à un compte déjà inscrit par email/mot de passe.
+  googleId String? @unique
+
   accountType      String  @default("personal")
   organizationName String?
 
