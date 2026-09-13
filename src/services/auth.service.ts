@@ -296,3 +296,28 @@ export async function login(input: { email: unknown; password: unknown }) {
 
   return user;
 }
+
+// La connexion Google ne crée jamais de compte : elle se lie uniquement à un compte déjà
+// inscrit par email/mot de passe (avec le même email, vérifié par Google), et se contente
+// ensuite de reconnaître ce compte via son googleId aux connexions suivantes.
+export async function loginWithGoogle(profile: { googleId: string; email: string }) {
+  const existingByGoogleId = await prisma.user.findUnique({
+    where: { googleId: profile.googleId },
+    include: { membership: true },
+  });
+  if (existingByGoogleId) {
+    return existingByGoogleId;
+  }
+
+  const normalizedEmail = profile.email.trim().toLowerCase();
+  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!existingByEmail) {
+    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
+  }
+
+  return prisma.user.update({
+    where: { id: existingByEmail.id },
+    data: { googleId: profile.googleId },
+    include: { membership: true },
+  });
+}

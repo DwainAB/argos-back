@@ -4,6 +4,7 @@ import {
   AuthError,
   changePassword,
   login,
+  loginWithGoogle,
   requestPasswordReset,
   resetPassword,
   signAuthToken,
@@ -19,6 +20,7 @@ import {
 } from "../services/email.service";
 import { hasActiveAccess } from "../services/subscription.service";
 import { env } from "../config/env";
+import { GoogleAuthError, verifyGoogleIdToken } from "../services/google-oauth.service";
 
 export const authRouter = Router();
 
@@ -157,6 +159,33 @@ authRouter.post("/api/auth/reset-password", async (req, res) => {
     }
     console.error("Erreur lors de la réinitialisation du mot de passe :", err);
     res.status(500).json({ error: "Impossible de réinitialiser le mot de passe." });
+  }
+});
+
+// Flux 100% frontend (Google Identity Services) : le navigateur obtient directement un
+// id_token de Google et nous l'envoie ici pour vérification, pas de redirection serveur.
+authRouter.post("/api/auth/google", async (req, res) => {
+  try {
+    const profile = await verifyGoogleIdToken(req.body?.idToken);
+    const user = await loginWithGoogle(profile);
+
+    const token = signAuthToken(user.id);
+    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+
+    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+    );
+
+    res.json({ user: await toPublicUser(user) });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    if (err instanceof GoogleAuthError) {
+      return res.status(401).json({ error: err.message });
+    }
+    console.error("Erreur lors de la connexion Google :", err);
+    res.status(500).json({ error: "Impossible de vous connecter avec Google." });
   }
 });
 
