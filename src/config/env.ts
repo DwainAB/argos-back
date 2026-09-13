@@ -62,4 +62,9 @@ export const env = {
     priceSolo: process.env.STRIPE_PRICE_SOLO ?? "",
     priceBusiness: process.env.STRIPE_PRICE_BUSINESS ?? "",
   },
+  logRetention: {
+    // Durée de conservation des logs (LogEntry) côté Argos AI, indépendante de la
+    // rétention Railway. Au-delà, les logs sont purgés définitivement (voir log-retention.job.ts).
+    days: Number(process.env.LOG_RETENTION_DAYS ?? 7),
+  },
 };
