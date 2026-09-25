@@ -18,6 +18,11 @@ export const env = {
   auth: {
     jwtSecret: process.env.JWT_SECRET ?? "dev-secret-a-ne-jamais-utiliser-en-production",
   },
+  // Clé symétrique (32 octets, encodée en base64 ou hex) servant à chiffrer les secrets
+  // sensibles stockés en base (ex: clés API Render) — voir lib/encryption.ts. À générer une
+  // seule fois par environnement (ex: `openssl rand -base64 32`) et ne jamais faire tourner
+  // sans plan de re-chiffrement des données existantes.
+  encryptionKey: process.env.ENCRYPTION_KEY ?? "",
   railway: {
     projectToken: process.env.RAILWAY_PROJECT_TOKEN ?? "",
     environmentId: process.env.RAILWAY_ENVIRONMENT_ID ?? "",

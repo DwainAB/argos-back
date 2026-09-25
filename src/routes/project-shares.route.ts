@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ProjectShareError, listShares, shareProject, unshareProject } from "../services/project-share.service";
+import { ProjectShareError, listShares, shareProject, unshareProject } from "../services/organization/project-share.service";
 
 export const projectSharesRouter = Router();
 

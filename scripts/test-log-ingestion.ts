@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
-import { persistGroupedLog } from "../src/services/railway-log-stream.service";
-import { classifyLog } from "../src/services/log-classifier.service";
+import { persistGroupedLog } from "../src/services/logs/log-ingestion.service";
+import { classifyLog } from "../src/services/logs/log-classifier.service";
 
 const FAKE_MESSAGE = "ECONNREFUSED: could not connect to database at db-prod:5432 — connection pool exhausted";
 
@@ -18,7 +18,7 @@ async function main() {
   const category = classifyLog({ level: "error", message: FAKE_MESSAGE });
   console.log(`Catégorie (règles) : ${category}`);
 
-  await persistGroupedLog(project.id, {
+  await persistGroupedLog(project.id, "railway", {
     rawMessage: FAKE_MESSAGE,
     level: "error",
     category,

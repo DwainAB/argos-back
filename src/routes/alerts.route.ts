@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { suggestFix } from "../services/fix-suggestion.service";
-import { createFixPullRequest } from "../services/github-pr.service";
-import { projectAccessFilter } from "../services/project-access.service";
-import { getSubscriptionForRequestingUser, tryConsumeFixQuota } from "../services/subscription.service";
+import { suggestFix } from "../services/code-analysis/fix-suggestion.service";
+import { createFixPullRequest } from "../services/github/github-pr.service";
+import { projectAccessFilter } from "../services/organization/project-access.service";
+import { getSubscriptionForRequestingUser, tryConsumeFixQuota } from "../services/billing/subscription.service";
 
 export const alertsRouter = Router();
 

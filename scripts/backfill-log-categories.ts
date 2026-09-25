@@ -1,5 +1,5 @@
 import { prisma } from "../src/lib/prisma";
-import { classifyLog } from "../src/services/log-classifier.service";
+import { classifyLog } from "../src/services/logs/log-classifier.service";
 
 async function main() {
   const logs = await prisma.logEntry.findMany();

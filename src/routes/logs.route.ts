@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { fetchLatestDeployment } from "../services/railway-project-token.service";
-import { explainLog } from "../services/log-explanation.service";
-import { projectAccessFilter } from "../services/project-access.service";
-import { assertCanManageProject, OrganizationError } from "../services/organization.service";
+import { fetchLatestDeployment as fetchLatestRailwayDeployment } from "../services/providers/railway/railway-project-token.service";
+import { fetchLatestDeployment as fetchLatestRenderDeployment } from "../services/providers/render/render-api.service";
+import { decryptSecret } from "../lib/encryption";
+import { explainLog } from "../services/logs/log-explanation.service";
+import { projectAccessFilter } from "../services/organization/project-access.service";
+import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 
 export const logsRouter = Router();
 
@@ -71,7 +73,10 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   const { projectId } = req.params;
 
   try {
-    const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ...await projectAccessFilter(req.userId as string) },
+      include: { renderApiKeyRef: true },
+    });
 
     if (!project) {
       return res.status(404).json({ error: "Projet introuvable." });
@@ -85,15 +90,19 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
     ]);
 
     let latestDeployment = null;
-    if (project.railwayProjectToken && project.railwayServiceId && project.railwayEnvironmentId) {
-      try {
-        latestDeployment = await fetchLatestDeployment(project.railwayProjectToken, {
+    try {
+      if (project.railwayProjectToken && project.railwayServiceId && project.railwayEnvironmentId) {
+        latestDeployment = await fetchLatestRailwayDeployment(project.railwayProjectToken, {
           serviceId: project.railwayServiceId,
           environmentId: project.railwayEnvironmentId,
         });
-      } catch (err) {
-        console.error(`Impossible de récupérer le dernier déploiement du projet ${projectId} :`, err);
+      } else if (project.renderApiKeyRef && project.renderResourceId) {
+        latestDeployment = await fetchLatestRenderDeployment(decryptSecret(project.renderApiKeyRef.encryptedKey), {
+          resourceId: project.renderResourceId,
+        });
       }
+    } catch (err) {
+      console.error(`Impossible de récupérer le dernier déploiement du projet ${projectId} :`, err);
     }
 
     res.json({ latestDeployment, errorCount, warningCount });
@@ -115,6 +124,8 @@ logsRouter.get("/api/projects", async (req, res) => {
         createdAt: true,
         railwayServiceId: true,
         railwayEnvironmentId: true,
+        renderOwnerId: true,
+        renderResourceId: true,
         user: { select: { accountType: true, organizationName: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -155,6 +166,8 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
         createdAt: true,
         railwayServiceId: true,
         railwayEnvironmentId: true,
+        renderOwnerId: true,
+        renderResourceId: true,
         user: { select: { accountType: true, organizationName: true } },
       },
     });

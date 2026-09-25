@@ -7,7 +7,7 @@ import {
   createCheckoutSession,
   getOrCreateSubscriptionForRequestingUser,
   getSubscriptionForRequestingUser,
-} from "../services/subscription.service";
+} from "../services/billing/subscription.service";
 
 export const subscriptionRouter = Router();
 

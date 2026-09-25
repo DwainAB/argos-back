@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/prisma";
-import { getRepoTree, getFileContent } from "../src/services/github-repo-explorer.service";
+import { getRepoTree, getFileContent } from "../src/services/github/github-repo-explorer.service";
 
 async function main() {
   const project = await prisma.project.findFirst({
