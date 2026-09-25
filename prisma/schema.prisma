@@ -270,6 +270,13 @@ model Alert {
 
   status String @default("open")
 
+  // Détermine si une correction de code a un sens pour ce problème : "code" (bug applicatif,
+  // corrigible par PR) ou "external" (quota fournisseur, config externe, action à faire par
+  // l'utilisateur sur une plateforme tierce — aucune correction de code possible). Tranché dès
+  // le triage initial (voir log-triage.service.ts) ; le bouton de correction IA n'est proposé
+  // que pour "code".
+  fixLocation String @default("code")
+
   resolvedAt DateTime?
 
   proposedFilePath String? @db.Text

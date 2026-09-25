@@ -117,6 +117,12 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
       return res.status(404).json({ error: "Alerte introuvable." });
     }
 
+    if (alert.fixLocation === "external") {
+      return res.status(422).json({
+        error: "Ce problème ne se corrige pas dans le code — suivez les instructions données dans l'explication de l'alerte.",
+      });
+    }
+
     const { project } = alert.logEntry;
 
     if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {

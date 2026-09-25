@@ -53,7 +53,7 @@ async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log
 
   if (triage.isRealIssue) {
     await prisma.alert.create({
-      data: { logEntryId, explanation: triage.explanation },
+      data: { logEntryId, explanation: triage.explanation, fixLocation: triage.fixLocation },
     });
 
     notifyProjectRecipients(projectId, triage.finalCategory, triage.explanation).catch((err) =>
