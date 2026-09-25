@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { verifyAuthToken } from "../services/auth.service";
+import { verifyAuthToken } from "../services/auth/auth.service";
 
 export const SESSION_COOKIE = "argos_session";
 

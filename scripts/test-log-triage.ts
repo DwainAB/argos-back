@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { triageLog } from "../src/services/log-triage.service";
+import { triageLog } from "../src/services/logs/log-triage.service";
 
 const CASES = [
   {

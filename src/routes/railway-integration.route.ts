@@ -5,9 +5,9 @@ import {
   buildRailwayAuthorizeUrl,
   exchangeCodeForToken,
   generatePkcePair,
-} from "../services/railway-oauth.service";
-import { storeRailwayToken, getStoredRailwayToken } from "../services/railway-token-store.service";
-import { fetchAccessibleProjects, fetchLatestDeploymentLogs, fetchMe } from "../services/railway-api.service";
+} from "../services/providers/railway/railway-oauth.service";
+import { storeRailwayToken, getStoredRailwayToken } from "../services/providers/railway/railway-token-store.service";
+import { fetchAccessibleProjects, fetchLatestDeploymentLogs, fetchMe } from "../services/providers/railway/railway-api.service";
 
 export const railwayIntegrationRouter = Router();
 

@@ -10,17 +10,17 @@ import {
   signAuthToken,
   signup,
   updatePhone,
-} from "../services/auth.service";
+} from "../services/auth/auth.service";
 import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
 import {
   sendLoginNotificationEmail,
   sendPasswordChangedEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
-} from "../services/email.service";
-import { hasActiveAccess } from "../services/subscription.service";
+} from "../services/notifications/email.service";
+import { hasActiveAccess } from "../services/billing/subscription.service";
 import { env } from "../config/env";
-import { GoogleAuthError, verifyGoogleIdToken } from "../services/google-oauth.service";
+import { GoogleAuthError, verifyGoogleIdToken } from "../services/auth/google-oauth.service";
 
 export const authRouter = Router();
 

@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import Stripe from "stripe";
 import { env } from "../config/env";
-import { handleStripeWebhookEvent } from "../services/subscription.service";
+import { handleStripeWebhookEvent } from "../services/billing/subscription.service";
 
 export const stripeWebhookRouter = Router();
 

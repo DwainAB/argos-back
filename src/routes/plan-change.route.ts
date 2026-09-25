@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
-import { PlanChangeError, downgradeToSoloPlan, getDowngradePreview, upgradeToBusinessPlan } from "../services/plan-change.service";
-import { SubscriptionError, getSubscriptionForRequestingUser, previewPlanChange } from "../services/subscription.service";
+import { PlanChangeError, downgradeToSoloPlan, getDowngradePreview, upgradeToBusinessPlan } from "../services/billing/plan-change.service";
+import { SubscriptionError, getSubscriptionForRequestingUser, previewPlanChange } from "../services/billing/subscription.service";
 
 const PLAN_CHANGE_RETURN_URL = `${env.frontendUrl}/dashboard/organizations/billing`;
 

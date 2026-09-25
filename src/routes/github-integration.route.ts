@@ -7,9 +7,9 @@ import {
   listAppInstallations,
   listInstallationRepos,
   listRepoBranches,
-} from "../services/github-app.service";
-import { projectAccessFilter } from "../services/project-access.service";
-import { assertCanManageProject, OrganizationError } from "../services/organization.service";
+} from "../services/github/github-app.service";
+import { projectAccessFilter } from "../services/organization/project-access.service";
+import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 
 export const githubPublicRouter = Router();
 export const githubIntegrationRouter = Router();

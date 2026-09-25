@@ -38,6 +38,8 @@ model User {
   subscription Subscription?
 
   passwordResetTokens PasswordResetToken[]
+
+  renderApiKeys RenderApiKey[]
 }
 
 // Jeton à usage unique envoyé par email pour réinitialiser un mot de passe oublié (page de
@@ -65,6 +67,8 @@ model Organization {
   projects    Project[]
 
   subscription Subscription?
+
+  renderApiKeys RenderApiKey[]
 }
 
 // Un plan Solo (userId renseigné) est porté par un compte personnel ; un plan Business
@@ -86,16 +90,49 @@ model Subscription {
 
   currentPeriodEnd DateTime?
 
-  smsUsedThisPeriod   Int @default(0)
-  fixesUsedThisPeriod Int @default(0)
+  smsUsedThisPeriod         Int @default(0)
+  fixesUsedThisPeriod       Int @default(0)
+  codeAnalysesUsedThisPeriod Int @default(0)
 
-  smsLimitWarningsSentThisPeriod   Int @default(0)
-  fixesLimitWarningsSentThisPeriod Int @default(0)
+  smsLimitWarningsSentThisPeriod         Int @default(0)
+  fixesLimitWarningsSentThisPeriod       Int @default(0)
+  codeAnalysesLimitWarningsSentThisPeriod Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// Clé API Render enregistrée une fois par l'utilisateur (ou par l'organisation, partagée par
+// tous ses membres — jamais les deux à la fois, même logique que Subscription), pour ne plus
+// avoir à la ressaisir à chaque nouveau projet Render. Chiffrée en base (AES-256-GCM, voir
+// lib/encryption.ts) : jamais stockée ni renvoyée en clair au frontend.
+model RenderApiKey {
+  id String @id @default(uuid())
+
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Nom donné par l'utilisateur pour se repérer entre plusieurs clés (ex: "Compte perso",
+  // "Client X") — jamais la clé elle-même.
+  label String @default("Clé Render")
+
+  // Chiffré : payload base64 contenant IV + tag d'authentification + texte chiffré.
+  encryptedKey String @db.Text
+
+  // Quatre derniers caractères de la clé en clair, affichés dans l'interface pour aider à
+  // distinguer deux clés sans jamais exposer la clé complète.
+  lastFour String
+
+  createdAt DateTime @default(now())
+
+  projects Project[]
+
+  @@index([userId])
+  @@index([organizationId])
 }
 
 model OrganizationMembership {
@@ -137,6 +174,11 @@ model Project {
   railwayServiceId     String?
   railwayEnvironmentId String?
 
+  renderApiKeyId   String?
+  renderApiKeyRef  RenderApiKey? @relation(fields: [renderApiKeyId], references: [id])
+  renderOwnerId    String?
+  renderResourceId String?
+
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
@@ -148,11 +190,37 @@ model Project {
   // réactivé automatiquement (remis à null) si le compte repasse à Business.
   archivedAt DateTime?
 
-  logs   LogEntry[]
-  shares ProjectShare[]
+  logs          LogEntry[]
+  shares        ProjectShare[]
+  codeAnalyses  CodeAnalysis[]
 
   @@index([userId])
   @@index([organizationId])
+}
+
+// Analyse complète du dépôt GitHub d'un projet par IA (performance, sécurité, architecture,
+// secrets exposés, dépendances obsolètes, code mort, gestion d'erreurs, absence de tests).
+// Déclenchée manuellement par l'utilisateur, à la différence du triage automatique des logs.
+model CodeAnalysis {
+  id        String @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  status String @default("running") // running | done | failed
+
+  filesScanned Int?
+
+  // Scores 0-10 par catégorie et liste structurée des findings, en JSON plutôt qu'en tables
+  // dédiées : la forme exacte est encore amenée à évoluer (catégories, champs par finding).
+  scores   Json?
+  findings Json?
+
+  errorMessage String? @db.Text
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([projectId, createdAt])
 }
 
 model ProjectShare {

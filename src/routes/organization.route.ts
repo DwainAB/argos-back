@@ -6,7 +6,7 @@ import {
   removeInvitation,
   removeMember,
   updateMemberRole,
-} from "../services/organization.service";
+} from "../services/organization/organization.service";
 
 export const organizationRouter = Router();
 
