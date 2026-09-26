@@ -270,6 +270,14 @@ model Alert {
 
   status String @default("open")
 
+  // Traçabilité de l'envoi effectif des notifications, indépendamment l'une de l'autre (un
+  // envoi peut échouer sans bloquer l'autre) — sert aussi de garde-fou : un log rejoué par le
+  // fournisseur (ex: reconnexion Railway/Render après redémarrage du backend) qui produirait
+  // malgré tout une nouvelle Alert ne redéclenche pas de notification si elle a déjà eu lieu
+  // pour un LogEntry équivalent (voir log-ingestion.service.ts).
+  emailSent Boolean @default(false)
+  smsSent   Boolean @default(false)
+
   // Détermine si une correction de code a un sens pour ce problème : "code" (bug applicatif,
   // corrigible par PR) ou "external" (quota fournisseur, config externe, action à faire par
   // l'utilisateur sur une plateforme tierce — aucune correction de code possible). Tranché dès

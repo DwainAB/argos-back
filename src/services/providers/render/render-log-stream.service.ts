@@ -31,6 +31,10 @@ export async function startLogStreamForProject(project: {
   url.searchParams.set("ownerId", project.renderOwnerId);
   url.searchParams.set("resource", project.renderResourceId);
   url.searchParams.set("direction", "forward");
+  // Sans startTime explicite, Render part par défaut de "il y a 1 heure" et rejoue tous les
+  // logs de cette fenêtre à chaque (re)connexion — y compris ceux déjà traités/notifiés lors
+  // d'une connexion précédente. On démarre strictement à l'instant présent à chaque appel.
+  url.searchParams.set("startTime", new Date().toISOString());
 
   const socket = new WebSocket(url.toString(), {
     headers: { Authorization: `Bearer ${project.renderApiKey}` },

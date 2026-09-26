@@ -112,6 +112,62 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
   }
 });
 
+type TimeseriesRange = "24h" | "7d" | "30d";
+
+// Calcule les bornes des buckets pour une plage donnée : 24 buckets d'1h pour "24h",
+// 7 buckets d'1j pour "7d", 30 buckets d'1j pour "30d".
+function buildBuckets(range: TimeseriesRange) {
+  const now = new Date();
+  const bucketMs = range === "24h" ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const bucketCount = range === "24h" ? 24 : range === "7d" ? 7 : 30;
+
+  // Aligne la borne de fin sur le bucket courant (haut de l'heure ou du jour).
+  const end = new Date(Math.ceil(now.getTime() / bucketMs) * bucketMs);
+
+  const buckets: { start: Date; end: Date }[] = [];
+  for (let i = bucketCount - 1; i >= 0; i--) {
+    const bucketEnd = new Date(end.getTime() - i * bucketMs);
+    const bucketStart = new Date(bucketEnd.getTime() - bucketMs);
+    buckets.push({ start: bucketStart, end: bucketEnd });
+  }
+
+  return buckets;
+}
+
+logsRouter.get("/api/projects/:projectId/timeseries", async (req, res) => {
+  const { projectId } = req.params;
+  const range = (["24h", "7d", "30d"].includes(req.query.range as string) ? req.query.range : "24h") as TimeseriesRange;
+
+  try {
+    const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
+
+    if (!project) {
+      return res.status(404).json({ error: "Projet introuvable." });
+    }
+
+    const buckets = buildBuckets(range);
+
+    const entries = await prisma.logEntry.findMany({
+      where: { projectId, createdAt: { gte: buckets[0].start } },
+      select: { createdAt: true, category: true },
+    });
+
+    const points = buckets.map(({ start, end }) => {
+      const inBucket = entries.filter((e) => e.createdAt >= start && e.createdAt < end);
+      return {
+        timestamp: start.toISOString(),
+        errorCount: inBucket.filter((e) => e.category === "critical").length,
+        warningCount: inBucket.filter((e) => e.category === "warning").length,
+      };
+    });
+
+    res.json({ range, points });
+  } catch (err) {
+    console.error(`Erreur lors de la récupération de la série temporelle du projet ${projectId} :`, err);
+    res.status(500).json({ error: "Impossible de récupérer la série temporelle." });
+  }
+});
+
 logsRouter.get("/api/projects", async (req, res) => {
   try {
     const projects = await prisma.project.findMany({
