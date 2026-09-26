@@ -103,7 +103,12 @@ export async function startLogStreamForProject(project: {
   client.subscribe<{ deploymentLogs: LiveLog[] }>(
     {
       query: DEPLOYMENT_LOGS_SUBSCRIPTION,
-      variables: { deploymentId, filter: "", limit: 50 },
+      // limit: 1 plutôt qu'une valeur plus large — cette subscription ne permet pas de filtrer
+      // par date, elle renvoie toujours les derniers logs existants dès la connexion (rejoués
+      // comme s'ils venaient d'arriver). Un minimum de replay est inévitable à chaque
+      // (re)connexion, mais 1 réduit le risque de retraiter/renotifier des logs déjà vus lors
+      // d'un redémarrage du backend.
+      variables: { deploymentId, filter: "", limit: 1 },
     },
     {
       next: (result) => {

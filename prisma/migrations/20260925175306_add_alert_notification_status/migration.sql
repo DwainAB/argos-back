@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `Alert` ADD COLUMN `emailSent` BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN `smsSent` BOOLEAN NOT NULL DEFAULT false;

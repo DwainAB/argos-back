@@ -6,10 +6,30 @@ import { sendAlertEmail } from "../notifications/email.service";
 import { sendAlertSms } from "../notifications/sms.service";
 import { getSubscriptionForProject, tryConsumeSmsQuota } from "../billing/subscription.service";
 
+// Fenêtre de recherche d'un doublon avant insertion — un fournisseur (Railway, Render) rejoue
+// parfois ses derniers logs à chaque (re)connexion (voir startLogStreamForProject), typiquement
+// juste après un redémarrage du backend. 24h couvre largement ce cas sans risquer d'ignorer un
+// vrai nouveau log qui coïnciderait par hasard avec un ancien message identique bien plus tard.
+const DUPLICATE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
 // Point d'entrée commun à tous les fournisseurs d'hébergement (Railway, Render, ...) une fois
 // qu'un log a été classé/groupé : persistance, triage IA, création d'alerte et notifications.
 // Partagé pour ne jamais dupliquer ce flux à chaque nouveau fournisseur ajouté.
 export async function persistGroupedLog(projectId: string, source: string, log: GroupedLog) {
+  const isDuplicate = await prisma.logEntry.findFirst({
+    where: {
+      projectId,
+      rawMessage: log.rawMessage,
+      externalTimestamp: log.externalTimestamp,
+      createdAt: { gte: new Date(Date.now() - DUPLICATE_LOOKBACK_MS) },
+    },
+    select: { id: true },
+  });
+
+  if (isDuplicate) {
+    return;
+  }
+
   const needsTriage = log.category === "critical" || log.category === "warning";
 
   const entry = await prisma.logEntry.create({
@@ -52,17 +72,17 @@ async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log
   });
 
   if (triage.isRealIssue) {
-    await prisma.alert.create({
+    const alert = await prisma.alert.create({
       data: { logEntryId, explanation: triage.explanation, fixLocation: triage.fixLocation },
     });
 
-    notifyProjectRecipients(projectId, triage.finalCategory, triage.explanation).catch((err) =>
+    notifyProjectRecipients(alert.id, projectId, triage.finalCategory, triage.explanation).catch((err) =>
       console.error(`Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`, err)
     );
   }
 }
 
-async function notifyProjectRecipients(projectId: string, level: string, explanation: string) {
+async function notifyProjectRecipients(alertId: string, projectId: string, level: string, explanation: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { name: true, userId: true, organizationId: true, user: { select: { email: true } } },
@@ -84,11 +104,13 @@ async function notifyProjectRecipients(projectId: string, level: string, explana
   // tous les destinataires reçoivent le SMS, soit aucun, pour ne pas épuiser le quota plus
   // vite sur un projet à plusieurs membres.
   let smsNotifications: Promise<void>[] = [];
+  let smsAttempted = false;
   if (phoneRecipients.length > 0) {
     const subscription = await getSubscriptionForProject(project);
     const smsAllowed = subscription ? await tryConsumeSmsQuota(subscription, project.user.email) : true;
 
     if (smsAllowed) {
+      smsAttempted = true;
       smsNotifications = phoneRecipients.map((to) =>
         sendAlertSms({ to, projectName: project.name, level, explanation }).catch((err) =>
           console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
@@ -98,4 +120,11 @@ async function notifyProjectRecipients(projectId: string, level: string, explana
   }
 
   await Promise.all([...emailNotifications, ...smsNotifications]);
+
+  await prisma.alert
+    .update({
+      where: { id: alertId },
+      data: { emailSent: recipients.length > 0, smsSent: smsAttempted },
+    })
+    .catch((err) => console.error(`Erreur lors de la mise à jour du statut de notification de l'alerte ${alertId} :`, err));
 }

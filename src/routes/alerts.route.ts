@@ -7,9 +7,57 @@ import { getSubscriptionForRequestingUser, tryConsumeFixQuota } from "../service
 
 export const alertsRouter = Router();
 
+// Nombre d'erreurs et d'avertissements (dernières 24h) par projet accessible à
+// l'utilisateur, pour le graphique comparatif de la vue d'ensemble (quels projets
+// causent le plus de problèmes).
+alertsRouter.get("/api/projects/alerts-summary", async (req, res) => {
+  try {
+    const projects = await prisma.project.findMany({
+      where: await projectAccessFilter(req.userId as string),
+      select: { id: true, name: true },
+    });
+
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const logs = await prisma.logEntry.findMany({
+      where: {
+        projectId: { in: projects.map((p) => p.id) },
+        createdAt: { gte: since24h },
+        category: { in: ["critical", "warning"] },
+      },
+      select: { projectId: true, category: true },
+    });
+
+    const countsByProject = new Map<string, { errorCount: number; warningCount: number }>();
+    for (const log of logs) {
+      const counts = countsByProject.get(log.projectId) ?? { errorCount: 0, warningCount: 0 };
+      if (log.category === "critical") counts.errorCount++;
+      else counts.warningCount++;
+      countsByProject.set(log.projectId, counts);
+    }
+
+    const summary = projects
+      .map((project) => {
+        const counts = countsByProject.get(project.id) ?? { errorCount: 0, warningCount: 0 };
+        return { projectId: project.id, projectName: project.name, ...counts };
+      })
+      .sort((a, b) => b.errorCount + b.warningCount - (a.errorCount + a.warningCount));
+
+    res.json({ summary });
+  } catch (err) {
+    console.error("Erreur lors de la récupération du résumé des alertes par projet :", err);
+    res.status(500).json({ error: "Impossible de récupérer le résumé des alertes." });
+  }
+});
+
 alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
   const { projectId } = req.params;
   const resolved = req.query.resolved === "true";
+
+  // limit/offset sont optionnels : sans eux, on renvoie tout (utilisé par ex. pour le badge de la sidebar).
+  const hasLimit = req.query.limit !== undefined;
+  const limit = hasLimit ? Math.min(Math.max(Number(req.query.limit) || 10, 1), 100) : undefined;
+  const offset = Math.max(Number(req.query.offset) || 0, 0);
 
   try {
     const project = await prisma.project.findFirst({ where: { id: projectId, ...await projectAccessFilter(req.userId as string) } });
@@ -18,16 +66,22 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
       return res.status(404).json({ error: "Projet introuvable." });
     }
 
-    const alerts = await prisma.alert.findMany({
-      where: {
-        logEntry: { projectId },
-        resolvedAt: resolved ? { not: null } : null,
-      },
-      include: { logEntry: true },
-      orderBy: { createdAt: "desc" },
-    });
+    const where = {
+      logEntry: { projectId },
+      resolvedAt: resolved ? { not: null } : null,
+    };
 
-    res.json({ alerts });
+    const [alerts, total] = await Promise.all([
+      prisma.alert.findMany({
+        where,
+        include: { logEntry: true },
+        orderBy: { createdAt: "desc" },
+        ...(hasLimit ? { take: limit, skip: offset } : {}),
+      }),
+      prisma.alert.count({ where }),
+    ]);
+
+    res.json({ alerts, total });
   } catch (err) {
     console.error(`Erreur lors de la récupération des alertes du projet ${projectId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer les alertes." });
