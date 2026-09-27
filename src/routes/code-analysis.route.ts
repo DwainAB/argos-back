@@ -9,6 +9,7 @@ import {
 } from "../services/code-analysis/code-analysis.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { getSubscriptionForRequestingUser, tryConsumeCodeAnalysisQuota } from "../services/billing/subscription.service";
+import { logActivity, getLastActor, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 const VALID_STATUSES: FindingStatus[] = ["open", "resolved", "ignored"];
 
@@ -66,6 +67,14 @@ codeAnalysisRouter.post("/api/projects/:projectId/code-analysis", async (req, re
 
     const analysis = await prisma.codeAnalysis.create({ data: { projectId, status: "running" } });
 
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.CODE_ANALYSIS_STARTED,
+      entityType: "CodeAnalysis",
+      entityId: analysis.id,
+      projectId,
+    });
+
     // Répond immédiatement : l'analyse peut prendre de quelques secondes à quelques minutes
     // selon la taille du dépôt, le frontend récupère le résultat en repassant par l'historique.
     res.status(202).json({ analysis });
@@ -122,7 +131,14 @@ codeAnalysisRouter.get("/api/projects/:projectId/code-analysis", async (req, res
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({ analyses });
+    const startedByActors = await getLastActors(
+      "CodeAnalysis",
+      analyses.map((a) => a.id),
+      ACTIVITY_ACTIONS.CODE_ANALYSIS_STARTED
+    );
+    const analysesWithActors = analyses.map((a) => ({ ...a, startedBy: startedByActors.get(a.id) ?? null }));
+
+    res.json({ analyses: analysesWithActors });
   } catch (err) {
     console.error(`Erreur lors de la récupération des analyses de code du projet ${projectId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer les analyses de code." });
@@ -141,7 +157,9 @@ codeAnalysisRouter.get("/api/code-analysis/:analysisId", async (req, res) => {
       return res.status(404).json({ error: "Analyse introuvable." });
     }
 
-    res.json({ analysis });
+    const startedBy = await getLastActor("CodeAnalysis", analysisId, ACTIVITY_ACTIONS.CODE_ANALYSIS_STARTED);
+
+    res.json({ analysis: { ...analysis, startedBy } });
   } catch (err) {
     console.error(`Erreur lors de la récupération de l'analyse de code ${analysisId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer cette analyse." });

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
+import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const gitlabConnectionsRouter = Router();
 
@@ -69,6 +70,17 @@ gitlabConnectionsRouter.delete("/api/gitlab-connections/:connectionId", async (r
     });
 
     await prisma.gitlabConnection.delete({ where: { id: connectionId } });
+
+    for (const project of projects) {
+      await logActivity({
+        userId: req.userId as string,
+        action: ACTIVITY_ACTIONS.GITLAB_CONNECTION_REMOVED,
+        entityType: "Project",
+        entityId: project.id,
+        projectId: project.id,
+        metadata: { previousRepo: project.gitlabRepo },
+      });
+    }
 
     res.status(204).end();
   } catch (err) {

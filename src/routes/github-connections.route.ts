@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { listAppInstallations } from "../services/providers/github/github-app.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
+import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const githubConnectionsRouter = Router();
 
@@ -70,6 +71,17 @@ githubConnectionsRouter.delete("/api/github-connections/:installationId", async 
       where: { id: { in: projects.map((p) => p.id) } },
       data: { githubInstallationId: null, githubRepo: null, githubBranch: null },
     });
+
+    for (const project of projects) {
+      await logActivity({
+        userId: req.userId as string,
+        action: ACTIVITY_ACTIONS.GITHUB_INSTALLATION_DISCONNECTED,
+        entityType: "Project",
+        entityId: project.id,
+        projectId: project.id,
+        metadata: { previousRepo: project.githubRepo },
+      });
+    }
 
     res.status(204).end();
   } catch (err) {

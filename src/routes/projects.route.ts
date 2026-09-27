@@ -10,6 +10,7 @@ import {
 } from "../services/providers/render/render-api-key.service";
 import { getMembershipForUser } from "../services/organization/organization.service";
 import { SOLO_PROJECT_LIMIT } from "../services/billing/subscription.service";
+import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const projectsRouter = Router();
 
@@ -145,6 +146,15 @@ projectsRouter.post("/api/projects", async (req, res) => {
         renderResourceId: render!.resourceId,
       }).catch((err) => console.error(`Échec du démarrage du streaming pour le projet ${project.id} :`, err));
     }
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.PROJECT_CREATED,
+      entityType: "Project",
+      entityId: project.id,
+      projectId: project.id,
+      metadata: { name: project.name, hostingProvider: railway ? "railway" : "render" },
+    });
 
     res.json({ project });
   } catch (err) {

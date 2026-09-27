@@ -6,6 +6,7 @@ import { decryptSecret } from "../lib/encryption";
 import { explainLog } from "../services/logs/log-explanation.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
+import { logActivity, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const logsRouter = Router();
 
@@ -189,7 +190,14 @@ logsRouter.get("/api/projects", async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({ projects });
+    const createdByActors = await getLastActors(
+      "Project",
+      projects.map((p) => p.id),
+      ACTIVITY_ACTIONS.PROJECT_CREATED
+    );
+    const projectsWithActors = projects.map((p) => ({ ...p, createdBy: createdByActors.get(p.id) ?? null }));
+
+    res.json({ projects: projectsWithActors });
   } catch (err) {
     console.error("Erreur lors de la récupération des projets :", err);
     res.status(500).json({ error: "Impossible de récupérer les projets." });
@@ -232,6 +240,17 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
       },
     });
 
+    if (existing.name !== project.name) {
+      await logActivity({
+        userId: req.userId as string,
+        action: ACTIVITY_ACTIONS.PROJECT_RENAMED,
+        entityType: "Project",
+        entityId: projectId,
+        projectId,
+        metadata: { previousName: existing.name, newName: project.name },
+      });
+    }
+
     res.json({ project });
   } catch (err) {
     if (err instanceof OrganizationError) {
@@ -253,6 +272,18 @@ logsRouter.delete("/api/projects/:projectId", async (req, res) => {
     }
 
     await assertCanManageProject(req.userId as string, existing);
+
+    // Journalisé avant la suppression effective : entityId reste valide dans l'historique
+    // même une fois le projet supprimé (ActivityLog.projectId passe à null via onDelete:
+    // SetNull, mais l'entrée elle-même — et son entityId — persiste).
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.PROJECT_DELETED,
+      entityType: "Project",
+      entityId: projectId,
+      projectId,
+      metadata: { name: existing.name },
+    });
 
     await prisma.project.delete({ where: { id: projectId } });
 

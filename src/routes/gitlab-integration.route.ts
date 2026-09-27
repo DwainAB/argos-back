@@ -11,6 +11,7 @@ import {
 import { fetchGitlabUser, listGitlabProjects, listGitlabBranches } from "../services/providers/gitlab/gitlab-api.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
+import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 // Même mécanique que l'installation GitHub (github-integration.route.ts) : popup ouverte par
 // le frontend, callback qui referme la popup via postMessage plutôt qu'une redirection pleine
@@ -187,6 +188,15 @@ gitlabIntegrationRouter.post("/api/projects/:projectId/gitlab", async (req, res)
         gitlabRepo: String(repoFullPath),
         gitlabBranch: String(branch),
       },
+    });
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.GITLAB_REPO_CONNECTED,
+      entityType: "Project",
+      entityId: projectId,
+      projectId,
+      metadata: { repoFullPath, branch },
     });
 
     res.json({ project });
