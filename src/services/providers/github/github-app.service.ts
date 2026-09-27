@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { createAppAuth } from "@octokit/auth-app";
-import { env } from "../../config/env";
+import { env } from "../../../config/env";
 
 export function buildGithubInstallUrl(state: string) {
   const url = new URL(`https://github.com/apps/${env.github.slug}/installations/new`);

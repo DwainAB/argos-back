@@ -1,4 +1,4 @@
-import { env } from "../../config/env";
+import { env } from "../../../config/env";
 import { getValidAccessToken } from "./gitlab-api.service";
 
 // Équivalent GitLab de github-repo-explorer.service.ts : même contrat de sortie (RepoTreeEntry,
