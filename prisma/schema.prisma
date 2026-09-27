@@ -345,6 +345,10 @@ model Alert {
   // Explication donnée par l'IA sur SA correction (pourquoi ce changement résout le
   // problème) — distincte du champ `explanation` ci-dessus, qui explique le log lui-même.
   proposedExplanation String? @db.Text
+  // Message de commit par défaut proposé par l'IA (format "fix: chemin - résumé court"),
+  // modifiable par l'utilisateur avant validation — voir POST /fix/accept, où le message
+  // finalement utilisé pour le commit Git peut différer de celui-ci.
+  proposedCommitMessage String? @db.Text
   pullRequestUrl      String?
 
   logEntryId String   @unique

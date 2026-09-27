@@ -9,10 +9,11 @@ export type CreateFixPullRequestParams = {
   oldCode: string;
   newCode: string;
   explanation: string;
+  commitMessage: string;
 };
 
 export async function createFixPullRequest(params: CreateFixPullRequestParams): Promise<string> {
-  const { installationId, owner, repo, baseBranch, filePath, oldCode, newCode, explanation } = params;
+  const { installationId, owner, repo, baseBranch, filePath, oldCode, newCode, explanation, commitMessage } = params;
   const octokit = getInstallationOctokit(installationId);
 
   const branchName = `guardian-ai/fix-${Date.now()}`;
@@ -45,7 +46,7 @@ export async function createFixPullRequest(params: CreateFixPullRequestParams): 
     owner,
     repo,
     path: filePath,
-    message: `Correction : ${explanation}`,
+    message: commitMessage,
     content: Buffer.from(updatedContent, "utf-8").toString("base64"),
     sha: currentFile.sha,
     branch: branchName,
