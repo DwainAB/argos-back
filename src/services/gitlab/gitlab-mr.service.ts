@@ -12,10 +12,11 @@ export type CreateFixMergeRequestParams = {
   oldCode: string;
   newCode: string;
   explanation: string;
+  commitMessage: string;
 };
 
 export async function createFixMergeRequest(params: CreateFixMergeRequestParams): Promise<string> {
-  const { connectionId, gitlabProjectId, baseBranch, filePath, oldCode, newCode, explanation } = params;
+  const { connectionId, gitlabProjectId, baseBranch, filePath, oldCode, newCode, explanation, commitMessage } = params;
 
   const branchName = `guardian-ai/fix-${Date.now()}`;
   const encodedPath = encodeURIComponent(filePath);
@@ -71,7 +72,7 @@ export async function createFixMergeRequest(params: CreateFixMergeRequestParams)
     body: JSON.stringify({
       branch: branchName,
       content: updatedContent,
-      commit_message: `Correction : ${explanation}`,
+      commit_message: commitMessage,
     }),
   });
   if (!updateResponse.ok) {

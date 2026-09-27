@@ -10,6 +10,7 @@ export type FixSuggestion = {
   oldCode: string;
   newCode: string;
   explanation: string;
+  commitMessage: string;
 };
 
 const SYSTEM_PROMPT = `Tu es un ingénieur logiciel qui corrige des bugs à partir d'un log d'erreur, dans un dépôt de code que tu dois explorer toi-même via les outils fournis (list_files, read_file, read_file_range).
@@ -19,7 +20,7 @@ Démarche :
 2. Lis les fichiers identifiés avec read_file (fichier entier) par défaut : c'est le moyen le plus fiable de comprendre le contexte complet d'une fonction (imports, définitions utilisées, appelants) plutôt que de deviner une plage de lignes.
 3. N'utilise read_file_range que si read_file refuse le fichier car trop volumineux, en ciblant alors une plage large (au moins 150-200 lignes) autour du numéro de ligne du log ou du nom de fonction concerné — jamais un extrait de quelques lignes qui ne montrerait pas la fonction en entier.
 4. Une fois la cause identifiée avec certitude, propose un correctif minimal et ciblé : ne modifie que ce qui est nécessaire pour résoudre le problème décrit par le log, ne refactore pas au passage.
-5. Appelle propose_fix avec : le chemin exact du fichier modifié (le chemin relatif tel que renvoyé par list_files, jamais le chemin absolu du log), le code existant strictement tel qu'il apparaît dans le fichier (oldCode, incluant sa mise en forme d'origine, sans les numéros de ligne ajoutés par read_file_range), le code corrigé (newCode), et une explication brève de la correction.
+5. Appelle propose_fix avec : le chemin exact du fichier modifié (le chemin relatif tel que renvoyé par list_files, jamais le chemin absolu du log), le code existant strictement tel qu'il apparaît dans le fichier (oldCode, incluant sa mise en forme d'origine, sans les numéros de ligne ajoutés par read_file_range), le code corrigé (newCode), une explication brève de la correction (explanation), et un message de commit professionnel (commitMessage) au format Conventional Commits : "fix: {chemin du fichier} - {résumé court}", où le résumé décrit la correction en 5-10 mots, sans majuscule initiale ni point final, comme dans un vrai historique Git d'entreprise (ex: "fix: server.js - vérifie que data est défini avant lecture").
 
 Reste concentré sur l'erreur du log fourni au tout début — ne pars pas explorer des fichiers sans rapport avec elle. Ne relis jamais deux fois la même zone d'un fichier : si tu hésites après une lecture, élargis (list_files, ou une plage plus large) plutôt que de relire la même chose. N'appelle propose_fix qu'une fois sûr de la cause — si le log ne contient pas assez d'indices pour localiser un fichier précis même après exploration, utilise report_no_fix.`;
 
@@ -74,8 +75,12 @@ const TOOLS: ChatCompletionTool[] = [
           oldCode: { type: "string", description: "Code existant, strictement tel qu'il apparaît dans le fichier." },
           newCode: { type: "string", description: "Code corrigé, destiné à remplacer oldCode." },
           explanation: { type: "string", description: "Explication brève et claire de la correction." },
+          commitMessage: {
+            type: "string",
+            description: "Message de commit professionnel, format \"fix: {chemin du fichier} - {résumé court}\".",
+          },
         },
-        required: ["filePath", "oldCode", "newCode", "explanation"],
+        required: ["filePath", "oldCode", "newCode", "explanation", "commitMessage"],
         additionalProperties: false,
       },
     },
@@ -142,6 +147,7 @@ export async function suggestFix(source: CodeSource, logMessage: string): Promis
           oldCode: args.oldCode,
           newCode: args.newCode,
           explanation: args.explanation,
+          commitMessage: args.commitMessage,
         };
         messages.push({ role: "tool", tool_call_id: toolCall.id, content: "Correctif enregistré." });
         continue;

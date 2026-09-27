@@ -7,6 +7,7 @@ export type FixChangeRequestParams = {
   oldCode: string;
   newCode: string;
   explanation: string;
+  commitMessage: string;
 };
 
 // Dispatch vers GitHub (pull request) ou GitLab (merge request) selon le fournisseur de code

@@ -215,6 +215,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
         proposedOldCode: suggestion.oldCode,
         proposedNewCode: suggestion.newCode,
         proposedExplanation: suggestion.explanation,
+        proposedCommitMessage: suggestion.commitMessage,
       },
       include: { logEntry: true },
     });
@@ -249,11 +250,21 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
       return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub ou GitLab connecté." });
     }
 
+    // Le message de commit édité par l'utilisateur (s'il en a fourni un) prime sur celui
+    // proposé par défaut par l'IA — voir proposedCommitMessage, éditable côté frontend avant
+    // validation.
+    const { commitMessage } = req.body ?? {};
+    const finalCommitMessage =
+      typeof commitMessage === "string" && commitMessage.trim()
+        ? commitMessage.trim()
+        : (alert.proposedCommitMessage ?? `fix: ${alert.proposedFilePath}`);
+
     const pullRequestUrl = await createFixChangeRequest(project, {
       filePath: alert.proposedFilePath,
       oldCode: alert.proposedOldCode,
       newCode: alert.proposedNewCode,
       explanation: alert.proposedExplanation ?? alert.explanation,
+      commitMessage: finalCommitMessage,
     });
 
     const updated = await prisma.alert.update({
