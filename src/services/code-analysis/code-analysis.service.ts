@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 import OpenAI from "openai";
 import type { Project } from "@prisma/client";
 import { env } from "../../config/env";
-import * as githubExplorer from "../github/github-repo-explorer.service";
-import * as gitlabExplorer from "../gitlab/gitlab-repo-explorer.service";
+import * as githubExplorer from "../providers/github/github-repo-explorer.service";
+import * as gitlabExplorer from "../providers/gitlab/gitlab-repo-explorer.service";
 import { scanForSecrets } from "../logs/secret-patterns";
 
 export type RepoTreeEntry = { path: string; type: "blob" | "tree"; size?: number };

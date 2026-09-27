@@ -7,8 +7,8 @@ import {
   buildGitlabAuthorizeUrl,
   exchangeCodeForToken,
   generatePkcePair,
-} from "../services/gitlab/gitlab-oauth.service";
-import { fetchGitlabUser, listGitlabProjects, listGitlabBranches } from "../services/gitlab/gitlab-api.service";
+} from "../services/providers/gitlab/gitlab-oauth.service";
+import { fetchGitlabUser, listGitlabProjects, listGitlabBranches } from "../services/providers/gitlab/gitlab-api.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 

@@ -1,6 +1,6 @@
 import type { Project } from "@prisma/client";
-import { createFixPullRequest } from "../github/github-pr.service";
-import { createFixMergeRequest } from "../gitlab/gitlab-mr.service";
+import { createFixPullRequest } from "../providers/github/github-pr.service";
+import { createFixMergeRequest } from "../providers/gitlab/gitlab-mr.service";
 
 export type FixChangeRequestParams = {
   filePath: string;

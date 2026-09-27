@@ -1,6 +1,6 @@
-import { prisma } from "../../lib/prisma";
-import { encryptSecret, decryptSecret } from "../../lib/encryption";
-import { env } from "../../config/env";
+import { prisma } from "../../../lib/prisma";
+import { encryptSecret, decryptSecret } from "../../../lib/encryption";
+import { env } from "../../../config/env";
 import { refreshGitlabToken } from "./gitlab-oauth.service";
 
 // Marge de sécurité avant l'expiration réelle du token GitLab (2h par défaut) — évite qu'un

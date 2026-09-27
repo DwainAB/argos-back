@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { env } from "../../config/env";
+import { env } from "../../../config/env";
 
 // Flow OAuth2 avec PKCE (comme Railway, voir railway-oauth.service.ts) — GitLab le supporte
 // nativement et le recommande pour toute Application publique. Scope "api" (lecture+écriture)
