@@ -13,6 +13,8 @@ import { logsRouter } from "./routes/logs.route";
 import { alertsRouter } from "./routes/alerts.route";
 import { codeAnalysisRouter } from "./routes/code-analysis.route";
 import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
+import { gitlabPublicRouter, gitlabIntegrationRouter } from "./routes/gitlab-integration.route";
+import { gitlabConnectionsRouter } from "./routes/gitlab-connections.route";
 import { projectSharesRouter } from "./routes/project-shares.route";
 import { organizationRouter } from "./routes/organization.route";
 import { subscriptionRouter } from "./routes/subscription.route";
@@ -38,17 +40,20 @@ export function createApp() {
   app.use(authRouter);
 
   app.use(githubPublicRouter);
+  app.use(gitlabPublicRouter);
 
   app.use(authMiddleware);
   app.use(railwayIntegrationRouter);
   app.use(renderIntegrationRouter);
   app.use(renderApiKeysRouter);
   app.use(githubConnectionsRouter);
+  app.use(gitlabConnectionsRouter);
   app.use(projectsRouter);
   app.use(logsRouter);
   app.use(alertsRouter);
   app.use(codeAnalysisRouter);
   app.use(githubIntegrationRouter);
+  app.use(gitlabIntegrationRouter);
   app.use(projectSharesRouter);
   app.use(organizationRouter);
   app.use(subscriptionRouter);

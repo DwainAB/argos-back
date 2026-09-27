@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { ChatCompletionTool, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { env } from "../../config/env";
-import { getRepoTree, getFileContent, getFileContentRange } from "../github/github-repo-explorer.service";
+import type { CodeSource } from "./code-analysis.service";
 
 const MAX_STEPS = 12;
 
@@ -15,10 +15,11 @@ export type FixSuggestion = {
 const SYSTEM_PROMPT = `Tu es un ingénieur logiciel qui corrige des bugs à partir d'un log d'erreur, dans un dépôt de code que tu dois explorer toi-même via les outils fournis (list_files, read_file, read_file_range).
 
 Démarche :
-1. Localise le ou les fichiers en cause, en commençant par ceux mentionnés explicitement dans le log (chemin de fichier dans une stack trace) s'il y en a. Lis-les avec read_file (fichier entier) par défaut : c'est le moyen le plus fiable de comprendre le contexte complet d'une fonction (imports, définitions utilisées, appelants) plutôt que de deviner une plage de lignes.
-2. N'utilise read_file_range que si read_file refuse le fichier car trop volumineux, en ciblant alors une plage large (au moins 150-200 lignes) autour du numéro de ligne du log ou du nom de fonction concerné — jamais un extrait de quelques lignes qui ne montrerait pas la fonction en entier.
-3. Une fois la cause identifiée avec certitude, propose un correctif minimal et ciblé : ne modifie que ce qui est nécessaire pour résoudre le problème décrit par le log, ne refactore pas au passage.
-4. Appelle propose_fix avec : le chemin exact du fichier modifié, le code existant strictement tel qu'il apparaît dans le fichier (oldCode, incluant sa mise en forme d'origine, sans les numéros de ligne ajoutés par read_file_range), le code corrigé (newCode), et une explication brève de la correction.
+1. Localise le ou les fichiers en cause. Une stack trace mentionne des chemins ABSOLUS du serveur où l'application tourne (ex: "/opt/render/project/src/server.js", "/app/dist/index.js") — ce ne sont jamais des chemins valides dans le dépôt Git, qui est organisé en chemins relatifs à sa racine (ex: "server.js", "src/index.js"). N'appelle JAMAIS read_file ou read_file_range avec un chemin absolu recopié tel quel depuis le log : commence TOUJOURS par list_files pour obtenir les vrais chemins relatifs du dépôt, puis fais correspondre le nom de fichier (dernier segment du chemin absolu, ex: "server.js") à l'un de ces chemins relatifs.
+2. Lis les fichiers identifiés avec read_file (fichier entier) par défaut : c'est le moyen le plus fiable de comprendre le contexte complet d'une fonction (imports, définitions utilisées, appelants) plutôt que de deviner une plage de lignes.
+3. N'utilise read_file_range que si read_file refuse le fichier car trop volumineux, en ciblant alors une plage large (au moins 150-200 lignes) autour du numéro de ligne du log ou du nom de fonction concerné — jamais un extrait de quelques lignes qui ne montrerait pas la fonction en entier.
+4. Une fois la cause identifiée avec certitude, propose un correctif minimal et ciblé : ne modifie que ce qui est nécessaire pour résoudre le problème décrit par le log, ne refactore pas au passage.
+5. Appelle propose_fix avec : le chemin exact du fichier modifié (le chemin relatif tel que renvoyé par list_files, jamais le chemin absolu du log), le code existant strictement tel qu'il apparaît dans le fichier (oldCode, incluant sa mise en forme d'origine, sans les numéros de ligne ajoutés par read_file_range), le code corrigé (newCode), et une explication brève de la correction.
 
 Reste concentré sur l'erreur du log fourni au tout début — ne pars pas explorer des fichiers sans rapport avec elle. Ne relis jamais deux fois la même zone d'un fichier : si tu hésites après une lecture, élargis (list_files, ou une plage plus large) plutôt que de relire la même chose. N'appelle propose_fix qu'une fois sûr de la cause — si le log ne contient pas assez d'indices pour localiser un fichier précis même après exploration, utilise report_no_fix.`;
 
@@ -94,14 +95,7 @@ const TOOLS: ChatCompletionTool[] = [
   },
 ];
 
-export async function suggestFix(params: {
-  installationId: number;
-  owner: string;
-  repo: string;
-  ref: string;
-  logMessage: string;
-}): Promise<FixSuggestion | null> {
-  const { installationId, owner, repo, ref, logMessage } = params;
+export async function suggestFix(source: CodeSource, logMessage: string): Promise<FixSuggestion | null> {
   const client = new OpenAI({ apiKey: env.openai.apiKey });
 
   const messages: ChatCompletionMessageParam[] = [
@@ -160,21 +154,21 @@ export async function suggestFix(params: {
       }
 
       if (toolCall.function.name === "list_files") {
-        const tree = await getRepoTree(installationId, { owner, repo, ref });
+        const tree = await source.listTree();
         const paths = tree.filter((entry) => entry.type === "blob").map((entry) => entry.path);
         messages.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify({ files: paths }) });
         continue;
       }
 
       if (toolCall.function.name === "read_file") {
-        const result = await getFileContent(installationId, { owner, repo, path: args.path, ref });
+        const result = await source.getFile(args.path);
         const payload = result.ok
           ? { path: result.path, content: result.content }
           : result.reason === "too_large"
             ? {
                 path: result.path,
                 error: "too_large",
-                totalLines: result.totalLines,
+                totalLines: (result as { totalLines?: number }).totalLines,
                 hint: "Ce fichier est trop volumineux pour être lu en entier. Utilise read_file_range pour cibler une plage de lignes précise.",
               }
             : { path: result.path, error: result.reason };
@@ -183,14 +177,7 @@ export async function suggestFix(params: {
       }
 
       if (toolCall.function.name === "read_file_range") {
-        const result = await getFileContentRange(installationId, {
-          owner,
-          repo,
-          path: args.path,
-          ref,
-          startLine: args.startLine,
-          endLine: args.endLine,
-        });
+        const result = await source.getFileRange(args.path, args.startLine, args.endLine);
         const payload = result.ok
           ? { path: result.path, startLine: result.startLine, endLine: result.endLine, totalLines: result.totalLines, content: result.content }
           : { path: result.path, error: result.reason };

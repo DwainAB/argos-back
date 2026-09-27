@@ -321,3 +321,36 @@ export async function loginWithGoogle(profile: { googleId: string; email: string
     include: { membership: true },
   });
 }
+
+// Même politique que loginWithGoogle ci-dessus : ne crée jamais de compte, se contente de
+// lier/reconnaître un compte déjà inscrit par email/mot de passe. email peut être absent côté
+// GitLab (compte avec email privé) — dans ce cas, seule la reconnaissance par gitlabId déjà
+// lié fonctionne, la première liaison échoue proprement plutôt que de deviner un compte.
+export async function loginWithGitlab(profile: { gitlabId: number; email: string | null }) {
+  const existingByGitlabId = await prisma.user.findUnique({
+    where: { gitlabId: profile.gitlabId },
+    include: { membership: true },
+  });
+  if (existingByGitlabId) {
+    return existingByGitlabId;
+  }
+
+  if (!profile.email) {
+    throw new AuthError(
+      "Votre compte GitLab n'expose pas d'adresse email publique. Rendez-vous sur gitlab.com > Edit profile > Main settings pour en rendre une publique, puis réessayez.",
+      400
+    );
+  }
+
+  const normalizedEmail = profile.email.trim().toLowerCase();
+  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!existingByEmail) {
+    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
+  }
+
+  return prisma.user.update({
+    where: { id: existingByEmail.id },
+    data: { gitlabId: profile.gitlabId },
+    include: { membership: true },
+  });
+}

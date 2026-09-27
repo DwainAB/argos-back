@@ -21,6 +21,12 @@ model User {
   // elle ne fait que se lier à un compte déjà inscrit par email/mot de passe.
   googleId String? @unique
 
+  // Identifiant GitLab (id numérique du compte), même principe et même restriction que
+  // googleId ci-dessus — voir loginWithGitlab (auth.service.ts). Distinct de
+  // GitlabConnection : ce champ sert uniquement à la connexion à Argos AI elle-même, jamais
+  // à associer un dépôt de code à un projet.
+  gitlabId Int? @unique
+
   accountType      String  @default("personal")
   organizationName String?
 
@@ -40,6 +46,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
 
   renderApiKeys RenderApiKey[]
+
+  gitlabConnections GitlabConnection[]
 }
 
 // Jeton à usage unique envoyé par email pour réinitialiser un mot de passe oublié (page de
@@ -69,6 +77,8 @@ model Organization {
   subscription Subscription?
 
   renderApiKeys RenderApiKey[]
+
+  gitlabConnections GitlabConnection[]
 }
 
 // Un plan Solo (userId renseigné) est porté par un compte personnel ; un plan Business
@@ -90,12 +100,12 @@ model Subscription {
 
   currentPeriodEnd DateTime?
 
-  smsUsedThisPeriod         Int @default(0)
-  fixesUsedThisPeriod       Int @default(0)
+  smsUsedThisPeriod          Int @default(0)
+  fixesUsedThisPeriod        Int @default(0)
   codeAnalysesUsedThisPeriod Int @default(0)
 
-  smsLimitWarningsSentThisPeriod         Int @default(0)
-  fixesLimitWarningsSentThisPeriod       Int @default(0)
+  smsLimitWarningsSentThisPeriod          Int @default(0)
+  fixesLimitWarningsSentThisPeriod        Int @default(0)
   codeAnalysesLimitWarningsSentThisPeriod Int @default(0)
 
   createdAt DateTime @default(now())
@@ -135,6 +145,39 @@ model RenderApiKey {
   @@index([organizationId])
 }
 
+// Connexion GitLab d'un utilisateur (ou d'une organisation, partagée par tous ses membres —
+// jamais les deux à la fois, même logique que RenderApiKey) via OAuth2. Contrairement à la
+// GitHub App (mécanisme d'installation, clé privée RSA), GitLab utilise un flow OAuth2
+// classique : access token + refresh token à conserver, tous deux chiffrés en base
+// (AES-256-GCM, voir lib/encryption.ts) — jamais stockés ni renvoyés en clair au frontend.
+model GitlabConnection {
+  id String @id @default(uuid())
+
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Identifiant et login GitLab du compte connecté, affichés dans l'interface pour distinguer
+  // plusieurs connexions (ex: compte perso vs compte client).
+  gitlabUserId    Int
+  gitlabUserLogin String
+
+  encryptedAccessToken  String @db.Text
+  encryptedRefreshToken String @db.Text
+
+  // Le token GitLab expire (contrairement au token GitHub App, renouvelé automatiquement à
+  // chaque appel) — sert à savoir quand utiliser le refresh token avant d'appeler l'API.
+  accessTokenExpiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  projects Project[]
+
+  @@index([userId])
+  @@index([organizationId])
+}
+
 model OrganizationMembership {
   id             String       @id @default(uuid())
   organizationId String
@@ -163,12 +206,21 @@ model OrganizationInvitation {
 }
 
 model Project {
-  id                   String   @id @default(uuid())
+  id                   String  @id @default(uuid())
   name                 String
   githubRepo           String?
   githubBranch         String?
   githubInstallationId Int?
-  createdAt            DateTime @default(now())
+
+  gitlabConnectionId  String?
+  gitlabConnectionRef GitlabConnection? @relation(fields: [gitlabConnectionId], references: [id])
+  gitlabRepo          String?
+  gitlabBranch        String?
+  // Identifiant numérique du projet GitLab (distinct de gitlabRepo, le chemin "namespace/repo")
+  // — l'API GitLab l'exige pour la plupart des appels (arbre, contenu de fichier, branches).
+  gitlabProjectId     Int?
+
+  createdAt DateTime @default(now())
 
   railwayProjectToken  String? @db.Text
   railwayServiceId     String?
@@ -190,9 +242,9 @@ model Project {
   // réactivé automatiquement (remis à null) si le compte repasse à Business.
   archivedAt DateTime?
 
-  logs          LogEntry[]
-  shares        ProjectShare[]
-  codeAnalyses  CodeAnalysis[]
+  logs         LogEntry[]
+  shares       ProjectShare[]
+  codeAnalyses CodeAnalysis[]
 
   @@index([userId])
   @@index([organizationId])
@@ -202,7 +254,7 @@ model Project {
 // secrets exposés, dépendances obsolètes, code mort, gestion d'erreurs, absence de tests).
 // Déclenchée manuellement par l'utilisateur, à la différence du triage automatique des logs.
 model CodeAnalysis {
-  id        String @id @default(uuid())
+  id        String  @id @default(uuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -287,9 +339,9 @@ model Alert {
 
   resolvedAt DateTime?
 
-  proposedFilePath String? @db.Text
-  proposedOldCode  String? @db.Text
-  proposedNewCode  String? @db.Text
+  proposedFilePath    String? @db.Text
+  proposedOldCode     String? @db.Text
+  proposedNewCode     String? @db.Text
   // Explication donnée par l'IA sur SA correction (pourquoi ce changement résout le
   // problème) — distincte du champ `explanation` ci-dessus, qui explique le log lui-même.
   proposedExplanation String? @db.Text

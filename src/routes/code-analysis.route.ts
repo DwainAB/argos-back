@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
-import { estimateCodeAnalysis, runCodeAnalysis, type CodeFinding, type FindingStatus } from "../services/code-analysis/code-analysis.service";
+import {
+  estimateCodeAnalysis,
+  runCodeAnalysis,
+  buildCodeSource,
+  type CodeFinding,
+  type FindingStatus,
+} from "../services/code-analysis/code-analysis.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { getSubscriptionForRequestingUser, tryConsumeCodeAnalysisQuota } from "../services/billing/subscription.service";
 
@@ -21,12 +27,12 @@ codeAnalysisRouter.get("/api/projects/:projectId/code-analysis/estimate", async 
       return res.status(404).json({ error: "Projet introuvable." });
     }
 
-    if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {
-      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub connecté." });
+    const source = buildCodeSource(project);
+    if (!source) {
+      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub ou GitLab connecté." });
     }
 
-    const [owner, repo] = project.githubRepo.split("/");
-    const estimate = await estimateCodeAnalysis(project.githubInstallationId, { owner, repo, ref: project.githubBranch });
+    const estimate = await estimateCodeAnalysis(source);
 
     res.json(estimate);
   } catch (err) {
@@ -44,8 +50,9 @@ codeAnalysisRouter.post("/api/projects/:projectId/code-analysis", async (req, re
       return res.status(404).json({ error: "Projet introuvable." });
     }
 
-    if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {
-      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub connecté." });
+    const source = buildCodeSource(project);
+    if (!source) {
+      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub ou GitLab connecté." });
     }
 
     const subscription = await getSubscriptionForRequestingUser(req.userId as string);
@@ -63,8 +70,6 @@ codeAnalysisRouter.post("/api/projects/:projectId/code-analysis", async (req, re
     // selon la taille du dépôt, le frontend récupère le résultat en repassant par l'historique.
     res.status(202).json({ analysis });
 
-    const [owner, repo] = project.githubRepo.split("/");
-
     // La dernière analyse déjà terminée sert de référence : ses findings encore "open" sont
     // revérifiés par l'IA (toujours présents ou corrigés) plutôt que redétectés à l'aveugle.
     const previousAnalysis = await prisma.codeAnalysis.findFirst({
@@ -75,7 +80,7 @@ codeAnalysisRouter.post("/api/projects/:projectId/code-analysis", async (req, re
       Array.isArray(previousAnalysis?.findings) ? (previousAnalysis.findings as unknown as CodeFinding[]) : []
     ).filter((f) => f.status === "open");
 
-    runCodeAnalysis(project.githubInstallationId, { owner, repo, ref: project.githubBranch }, previousOpenFindings)
+    runCodeAnalysis(source, previousOpenFindings)
       .then((result) =>
         prisma.codeAnalysis.update({
           where: { id: analysis.id },

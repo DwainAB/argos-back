@@ -40,6 +40,16 @@ export const env = {
     redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
     privateKey: loadGithubPrivateKey(),
   },
+  // Application OAuth2 GitLab (gitlab.com > Edit profile > Applications, ou au niveau d'un
+  // groupe) — flow OAuth2 classique, à la différence de la GitHub App (installation-based).
+  // Créer l'Application avec le scope "api" (lecture+écriture, voir gitlab-oauth.service.ts)
+  // et cette redirectUri.
+  gitlab: {
+    baseUrl: process.env.GITLAB_BASE_URL ?? "https://gitlab.com",
+    clientId: process.env.GITLAB_APP_CLIENT_ID ?? "",
+    clientSecret: process.env.GITLAB_APP_CLIENT_SECRET ?? "",
+    redirectUri: process.env.GITLAB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/gitlab/callback",
+  },
   // Groq (console.groq.com) : héberge le triage/l'explication des logs — remplace l'IA
   // locale Ollama initialement prévue (voir CAHIER_DES_CHARGES.md, décision du 2026-09-13).
   // API compatible OpenAI, d'où le baseURL pointé dessus avec le SDK openai déjà en dépendance.
