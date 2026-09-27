@@ -5,6 +5,7 @@ import { createFixChangeRequest } from "../services/code-analysis/fix-change-req
 import { buildCodeSource } from "../services/code-analysis/code-analysis.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { getSubscriptionForRequestingUser, tryConsumeFixQuota, consumeFixQuota } from "../services/billing/subscription.service";
+import { logActivity, getLastActor, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const alertsRouter = Router();
 
@@ -82,7 +83,13 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
       prisma.alert.count({ where }),
     ]);
 
-    res.json({ alerts, total });
+    const resolvedByActors = resolved
+      ? await getLastActors("Alert", alerts.map((a) => a.id), ACTIVITY_ACTIONS.ALERT_RESOLVED)
+      : new Map();
+
+    const alertsWithActors = alerts.map((alert) => ({ ...alert, resolvedBy: resolvedByActors.get(alert.id) ?? null }));
+
+    res.json({ alerts: alertsWithActors, total });
   } catch (err) {
     console.error(`Erreur lors de la récupération des alertes du projet ${projectId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer les alertes." });
@@ -102,7 +109,15 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
       return res.status(404).json({ error: "Alerte introuvable." });
     }
 
-    res.json({ alert });
+    const resolvedBy = alert.resolvedAt ? await getLastActor("Alert", alertId, ACTIVITY_ACTIONS.ALERT_RESOLVED) : null;
+    const fixDecidedBy =
+      alert.status === "fix_accepted"
+        ? await getLastActor("Alert", alertId, ACTIVITY_ACTIONS.FIX_ACCEPTED)
+        : alert.status === "fix_rejected"
+          ? await getLastActor("Alert", alertId, ACTIVITY_ACTIONS.FIX_REJECTED)
+          : null;
+
+    res.json({ alert: { ...alert, resolvedBy, fixDecidedBy } });
   } catch (err) {
     console.error(`Erreur lors de la récupération de l'alerte ${alertId} :`, err);
     res.status(500).json({ error: "Impossible de récupérer l'alerte." });
@@ -115,6 +130,7 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
   try {
     const alert = await prisma.alert.findFirst({
       where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
+      include: { logEntry: { select: { projectId: true } } },
     });
 
     if (!alert) {
@@ -125,6 +141,14 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
       where: { id: alertId },
       data: { resolvedAt: new Date() },
       include: { logEntry: true },
+    });
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.ALERT_RESOLVED,
+      entityType: "Alert",
+      entityId: alertId,
+      projectId: alert.logEntry.projectId,
     });
 
     res.json({ alert: updated });
@@ -140,6 +164,7 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
   try {
     const alert = await prisma.alert.findFirst({
       where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
+      include: { logEntry: { select: { projectId: true } } },
     });
 
     if (!alert) {
@@ -150,6 +175,14 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
       where: { id: alertId },
       data: { resolvedAt: null },
       include: { logEntry: true },
+    });
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.ALERT_REOPENED,
+      entityType: "Alert",
+      entityId: alertId,
+      projectId: alert.logEntry.projectId,
     });
 
     res.json({ alert: updated });
@@ -220,6 +253,14 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
       include: { logEntry: true },
     });
 
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.FIX_REQUESTED,
+      entityType: "Alert",
+      entityId: alertId,
+      projectId: project.id,
+    });
+
     res.json({ alert: updated });
   } catch (err) {
     console.error(`Erreur lors de la demande de correction pour l'alerte ${alertId} :`, err);
@@ -273,6 +314,15 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
       include: { logEntry: true },
     });
 
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.FIX_ACCEPTED,
+      entityType: "Alert",
+      entityId: alertId,
+      projectId: project.id,
+      metadata: { pullRequestUrl },
+    });
+
     res.json({ alert: updated });
   } catch (err) {
     console.error(`Erreur lors de la création de la pull request pour l'alerte ${alertId} :`, err);
@@ -286,6 +336,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
   try {
     const alert = await prisma.alert.findFirst({
       where: { id: alertId, logEntry: { project: await projectAccessFilter(req.userId as string) } },
+      include: { logEntry: { select: { projectId: true } } },
     });
 
     if (!alert) {
@@ -300,6 +351,14 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
       where: { id: alertId },
       data: { status: "fix_rejected" },
       include: { logEntry: true },
+    });
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.FIX_REJECTED,
+      entityType: "Alert",
+      entityId: alertId,
+      projectId: alert.logEntry.projectId,
     });
 
     res.json({ alert: updated });

@@ -10,6 +10,7 @@ import {
 } from "../services/providers/github/github-app.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
+import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
 
 export const githubPublicRouter = Router();
 export const githubIntegrationRouter = Router();
@@ -132,6 +133,15 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
         githubRepo: repoFullName,
         githubBranch: branch,
       },
+    });
+
+    await logActivity({
+      userId: req.userId as string,
+      action: ACTIVITY_ACTIONS.GITHUB_REPO_CONNECTED,
+      entityType: "Project",
+      entityId: projectId,
+      projectId,
+      metadata: { repoFullName, branch },
     });
 
     res.json({ project });

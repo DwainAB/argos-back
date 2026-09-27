@@ -48,6 +48,8 @@ model User {
   renderApiKeys RenderApiKey[]
 
   gitlabConnections GitlabConnection[]
+
+  activityLogs ActivityLog[]
 }
 
 // Jeton à usage unique envoyé par email pour réinitialiser un mot de passe oublié (page de
@@ -245,9 +247,48 @@ model Project {
   logs         LogEntry[]
   shares       ProjectShare[]
   codeAnalyses CodeAnalysis[]
+  activityLogs ActivityLog[]
 
   @@index([userId])
   @@index([organizationId])
+}
+
+// Journal d'activité générique : trace qui a fait quoi, sur quelle entité, quel que soit le
+// type d'action (création/suppression de projet, décision sur un correctif IA, lancement d'une
+// analyse Argos Security, connexion d'un provider...). userId nullable pour couvrir un futur
+// acteur "system" (ex: webhook Stripe) sans casser la contrainte — aucune route actuelle n'en a
+// besoin, mais mieux vaut ne pas fermer la porte dès la première version.
+model ActivityLog {
+  id String @id @default(uuid())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Slug stable de l'action (ex: "project.created", "alert.resolved", "fix.pull_request_created")
+  // — jamais de texte libre, pour rester filtrable/traduisible sans dépendre du contenu.
+  action String
+
+  // Type + id de l'entité concernée (ex: entityType="Alert", entityId=<uuid de l'Alert>) —
+  // couple générique plutôt qu'une colonne par type d'entité, pour ne jamais avoir à migrer le
+  // schéma à chaque nouvelle catégorie d'action tracée.
+  entityType String
+  entityId   String
+
+  // Renseigné dès que l'action est rattachable à un projet (la quasi-totalité des actions
+  // tracées), même quand l'entité elle-même n'est pas un Project (ex: une Alert) — permet de
+  // lister toute l'activité d'un projet sans remonter la chaîne de relations à chaque fois.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Détails additionnels propres à l'action (ex: ancien/nouveau nom pour un renommage, url de
+  // la PR créée) — JSON plutôt que des colonnes dédiées, pour la même raison que entityType.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([projectId])
+  @@index([userId])
 }
 
 // Analyse complète du dépôt GitHub d'un projet par IA (performance, sécurité, architecture,
