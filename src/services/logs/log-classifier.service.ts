@@ -13,6 +13,12 @@ const CRITICAL_PATTERNS: RegExp[] = [
   /enotfound/i,
   /econnreset/i,
   /\b5\d{2}\b.*internal server error/i,
+  // Erreurs JS/Node non gérées mais catchées puis logguées (ex: try/catch qui logge
+  // err.stack) — un type d'erreur standard suivi d'un message est le signe d'une
+  // exception réelle, même sans le libellé exact "uncaught exception".
+  /\b(TypeError|ReferenceError|RangeError|SyntaxError)\b/,
+  // Forme caractéristique d'une stack trace Node ("    at maFonction (fichier.js:12:34)").
+  /^\s*at .+\(.*:\d+:\d+\)/m,
 ];
 
 const BENIGN_PATTERNS: RegExp[] = [
@@ -63,8 +69,11 @@ export function classifyLog(params: { level: string; message: string }): LogCate
     return "warning";
   }
 
+  // Un level "error" explicite fourni par la plateforme (stderr) est traité comme critique
+  // par défaut — le triage IA (déclenché pour critical/warning) rattrape ensuite les faux
+  // positifs, comme il le fait déjà pour les patterns regex ci-dessus.
   if (level.includes("err")) {
-    return "warning";
+    return "critical";
   }
   if (level.includes("warn")) {
     return "warning";

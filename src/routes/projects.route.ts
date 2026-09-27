@@ -18,6 +18,7 @@ type RailwayInput = { projectToken: string; serviceId: string; environmentId: st
 // clé, stockée chiffrée à cette occasion pour les prochains projets) — jamais les deux.
 type RenderInput = { apiKeyId?: string; newApiKey?: string; newApiKeyLabel?: string; ownerId: string; resourceId: string };
 type GithubInput = { installationId: number; repoFullName: string; branch: string };
+type GitlabInput = { connectionId: string; gitlabProjectId: number; repoFullPath: string; branch: string };
 
 // Point d'entrée unique de création de projet : le Project n'est écrit en base qu'ici, une
 // fois que l'utilisateur a rassemblé toutes les informations voulues côté frontend (hébergeur
@@ -25,11 +26,12 @@ type GithubInput = { installationId: number; repoFullName: string; branch: strin
 // modale de connexion, pour ne pas laisser de projet fantôme (avec un streaming démarré pour
 // rien) si l'utilisateur abandonne le formulaire en cours de route.
 projectsRouter.post("/api/projects", async (req, res) => {
-  const { projectName, railway, render, github } = req.body ?? {} as {
+  const { projectName, railway, render, github, gitlab } = req.body ?? {} as {
     projectName?: string;
     railway?: RailwayInput;
     render?: RenderInput;
     github?: GithubInput;
+    gitlab?: GitlabInput;
   };
 
   if (!railway && !render) {
@@ -115,6 +117,14 @@ projectsRouter.post("/api/projects", async (req, res) => {
               githubInstallationId: Number(github.installationId),
               githubRepo: github.repoFullName,
               githubBranch: github.branch,
+            }
+          : {}),
+        ...(gitlab
+          ? {
+              gitlabConnectionId: gitlab.connectionId,
+              gitlabProjectId: Number(gitlab.gitlabProjectId),
+              gitlabRepo: gitlab.repoFullPath,
+              gitlabBranch: gitlab.branch,
             }
           : {}),
       },

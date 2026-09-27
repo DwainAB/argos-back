@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { suggestFix } from "../services/code-analysis/fix-suggestion.service";
-import { createFixPullRequest } from "../services/github/github-pr.service";
+import { createFixChangeRequest } from "../services/code-analysis/fix-change-request.service";
+import { buildCodeSource } from "../services/code-analysis/code-analysis.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
-import { getSubscriptionForRequestingUser, tryConsumeFixQuota } from "../services/billing/subscription.service";
+import { getSubscriptionForRequestingUser, tryConsumeFixQuota, consumeFixQuota } from "../services/billing/subscription.service";
 
 export const alertsRouter = Router();
 
@@ -171,7 +172,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
       return res.status(404).json({ error: "Alerte introuvable." });
     }
 
-    if (alert.fixLocation === "external") {
+    if (alert.fixLocation !== "code") {
       return res.status(422).json({
         error: "Ce problème ne se corrige pas dans le code — suivez les instructions données dans l'explication de l'alerte.",
       });
@@ -179,8 +180,9 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
 
     const { project } = alert.logEntry;
 
-    if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {
-      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub connecté." });
+    const source = buildCodeSource(project);
+    if (!source) {
+      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub ou GitLab connecté." });
     }
 
     const subscription = await getSubscriptionForRequestingUser(req.userId as string);
@@ -192,18 +194,17 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
       }
     }
 
-    const [owner, repo] = project.githubRepo.split("/");
-
-    const suggestion = await suggestFix({
-      installationId: project.githubInstallationId,
-      owner,
-      repo,
-      ref: project.githubBranch,
-      logMessage: alert.logEntry.rawMessage,
-    });
+    const suggestion = await suggestFix(source, alert.logEntry.rawMessage);
 
     if (!suggestion) {
       return res.status(422).json({ error: "L'IA n'a pas pu proposer de correctif fiable pour cette alerte." });
+    }
+
+    // Le quota n'est consommé qu'à ce stade, une fois la correction effectivement obtenue —
+    // ni un report_no_fix ni une exception (ex: erreur d'exploration du dépôt) ne doivent
+    // coûter de quota pour un correctif jamais livré.
+    if (subscription) {
+      await consumeFixQuota(subscription.id);
     }
 
     const updated = await prisma.alert.update({
@@ -244,17 +245,11 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
 
     const { project } = alert.logEntry;
 
-    if (!project.githubInstallationId || !project.githubRepo || !project.githubBranch) {
-      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub connecté." });
+    if (!buildCodeSource(project)) {
+      return res.status(422).json({ error: "Ce projet n'a pas de dépôt GitHub ou GitLab connecté." });
     }
 
-    const [owner, repo] = project.githubRepo.split("/");
-
-    const pullRequestUrl = await createFixPullRequest({
-      installationId: project.githubInstallationId,
-      owner,
-      repo,
-      baseBranch: project.githubBranch,
+    const pullRequestUrl = await createFixChangeRequest(project, {
       filePath: alert.proposedFilePath,
       oldCode: alert.proposedOldCode,
       newCode: alert.proposedNewCode,

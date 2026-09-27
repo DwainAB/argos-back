@@ -5,6 +5,7 @@ import {
   changePassword,
   login,
   loginWithGoogle,
+  loginWithGitlab,
   requestPasswordReset,
   resetPassword,
   signAuthToken,
@@ -186,6 +187,38 @@ authRouter.post("/api/auth/google", async (req, res) => {
     }
     console.error("Erreur lors de la connexion Google :", err);
     res.status(500).json({ error: "Impossible de vous connecter avec Google." });
+  }
+});
+
+// À la différence de Google (id_token vérifié côté serveur sans jamais transiter par une
+// popup), GitLab est un vrai flow OAuth2 par redirection : le frontend récupère
+// gitlabUserId/gitlabUserEmail via la même popup que GitlabConnectButton.tsx (voir
+// gitlab-integration.route.ts callback) et nous les transmet ici, déjà vérifiés côté serveur
+// lors de l'échange du code OAuth — rien de plus à revérifier qu'un GoogleAuthError ici.
+authRouter.post("/api/auth/gitlab", async (req, res) => {
+  try {
+    const { gitlabUserId, gitlabUserEmail } = req.body ?? {};
+
+    if (!gitlabUserId) {
+      return res.status(400).json({ error: "gitlabUserId requis." });
+    }
+
+    const user = await loginWithGitlab({ gitlabId: Number(gitlabUserId), email: gitlabUserEmail ?? null });
+
+    const token = signAuthToken(user.id);
+    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+
+    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+    );
+
+    res.json({ user: await toPublicUser(user) });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error("Erreur lors de la connexion GitLab :", err);
+    res.status(500).json({ error: "Impossible de vous connecter avec GitLab." });
   }
 });
 

@@ -1,8 +1,62 @@
 import crypto from "node:crypto";
 import OpenAI from "openai";
+import type { Project } from "@prisma/client";
 import { env } from "../../config/env";
-import { getRepoTree, getFileContent, type RepoTreeEntry } from "../github/github-repo-explorer.service";
+import * as githubExplorer from "../github/github-repo-explorer.service";
+import * as gitlabExplorer from "../gitlab/gitlab-repo-explorer.service";
 import { scanForSecrets } from "../logs/secret-patterns";
+
+export type RepoTreeEntry = { path: string; type: "blob" | "tree"; size?: number };
+type FileContentResult = { ok: true; path: string; content: string } | { ok: false; path: string; reason: string };
+type FileContentRangeResult =
+  | { ok: true; path: string; content: string; startLine: number; endLine: number; totalLines: number }
+  | { ok: false; path: string; reason: string };
+
+// Abstraction de source de code, agnostique du fournisseur (GitHub App, connexion GitLab
+// OAuth, ...) — tout le pipeline d'analyse IA ci-dessous ne connaît que cette interface,
+// jamais Octokit ni l'API REST GitLab directement. Ajouter un nouveau fournisseur de code
+// (Bitbucket, dépôt Git générique, ...) ne demande qu'une nouvelle fonction "xxxCodeSource"
+// ici, sans toucher au reste du fichier.
+export type CodeSource = {
+  listTree(): Promise<RepoTreeEntry[]>;
+  getFile(path: string): Promise<FileContentResult>;
+  getFileRange(path: string, startLine: number, endLine: number): Promise<FileContentRangeResult>;
+};
+
+export function githubCodeSource(installationId: number, params: { owner: string; repo: string; ref: string }): CodeSource {
+  return {
+    listTree: () => githubExplorer.getRepoTree(installationId, params),
+    getFile: (path) => githubExplorer.getFileContent(installationId, { ...params, path }),
+    getFileRange: (path, startLine, endLine) =>
+      githubExplorer.getFileContentRange(installationId, { ...params, path, startLine, endLine }),
+  };
+}
+
+export function gitlabCodeSource(connectionId: string, params: { gitlabProjectId: number; ref: string }): CodeSource {
+  return {
+    listTree: () => gitlabExplorer.getRepoTree(connectionId, params),
+    getFile: (path) => gitlabExplorer.getFileContent(connectionId, { ...params, path }),
+    getFileRange: (path, startLine, endLine) =>
+      gitlabExplorer.getFileContentRange(connectionId, { ...params, path, startLine, endLine }),
+  };
+}
+
+// Un projet n'a jamais les deux à la fois côté UI (voir NewProjectContent.tsx), mais on reste
+// défensif ici : GitHub prime si les deux sont renseignés. Utilisé par code-analysis.route.ts
+// et alerts.route.ts (fix IA) — les deux fonctionnalités qui ont besoin de lire le code du
+// dépôt connecté, quel que soit le fournisseur.
+export function buildCodeSource(project: Project): CodeSource | null {
+  if (project.githubInstallationId && project.githubRepo && project.githubBranch) {
+    const [owner, repo] = project.githubRepo.split("/");
+    return githubCodeSource(project.githubInstallationId, { owner, repo, ref: project.githubBranch });
+  }
+
+  if (project.gitlabConnectionId && project.gitlabProjectId && project.gitlabBranch) {
+    return gitlabCodeSource(project.gitlabConnectionId, { gitlabProjectId: project.gitlabProjectId, ref: project.gitlabBranch });
+  }
+
+  return null;
+}
 
 // Extensions considérées comme du code source à analyser — le reste (images, fonts, fichiers
 // de verrouillage, etc.) n'apporte rien à une revue de perf/sécurité/architecture.
@@ -42,21 +96,15 @@ function isAnalyzableFile(path: string): boolean {
   return CODE_EXTENSIONS.has(extension);
 }
 
-async function listAnalyzableFiles(
-  installationId: number,
-  params: { owner: string; repo: string; ref: string }
-): Promise<RepoTreeEntry[]> {
-  const tree = await getRepoTree(installationId, params);
+async function listAnalyzableFiles(source: CodeSource): Promise<RepoTreeEntry[]> {
+  const tree = await source.listTree();
   return tree.filter((entry) => entry.type === "blob" && isAnalyzableFile(entry.path)).slice(0, MAX_FILES_ANALYZED);
 }
 
 // Estimation légère : ne lit que l'arbre Git (chemins + tailles), jamais le contenu des
 // fichiers — rapide et gratuite, à l'inverse de l'analyse réelle ci-dessous.
-export async function estimateCodeAnalysis(
-  installationId: number,
-  params: { owner: string; repo: string; ref: string }
-): Promise<CodeAnalysisEstimate> {
-  const files = await listAnalyzableFiles(installationId, params);
+export async function estimateCodeAnalysis(source: CodeSource): Promise<CodeAnalysisEstimate> {
+  const files = await listAnalyzableFiles(source);
   const parallelBatches = Math.ceil(files.length / MAX_CONCURRENT_ANALYSES);
 
   return {
@@ -270,15 +318,14 @@ async function synthesizeScores(client: OpenAI, findings: CodeFinding[]): Promis
 }
 
 export async function runCodeAnalysis(
-  installationId: number,
-  params: { owner: string; repo: string; ref: string },
+  source: CodeSource,
   // Findings de la dernière analyse "done" du projet, s'il y en a une. Seuls les findings
   // encore "open" sont utiles ici : ceux déjà marqués corrigé/ignoré par un utilisateur ne
   // sont jamais revérifiés (le statut manuel prime, voir JOURNAL.md) ni recopiés.
   previousOpenFindings: CodeFinding[] = []
 ): Promise<CodeAnalysisResult> {
   const client = new OpenAI({ apiKey: env.openai.apiKey });
-  const files = await listAnalyzableFiles(installationId, params);
+  const files = await listAnalyzableFiles(source);
 
   const previousByFile = new Map<string, CodeFinding[]>();
   for (const finding of previousOpenFindings) {
@@ -288,7 +335,7 @@ export async function runCodeAnalysis(
   }
 
   const perFileFindings = await mapWithConcurrency(files, MAX_CONCURRENT_ANALYSES, async (entry) => {
-    const result = await getFileContent(installationId, { owner: params.owner, repo: params.repo, path: entry.path, ref: params.ref });
+    const result = await source.getFile(entry.path);
     if (!result.ok) return [];
 
     // Tronque les fichiers anormalement volumineux (garde-fou de coût/contexte) pour l'IA

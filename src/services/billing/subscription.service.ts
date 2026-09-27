@@ -384,7 +384,11 @@ export async function tryConsumeSmsQuota(subscription: {
   return true;
 }
 
-// Équivalent pour les corrections proposées par l'IA distante.
+// Équivalent pour les corrections proposées par l'IA distante. Vérifie le quota (et envoie les
+// emails de seuil/limite si besoin) SANS l'incrémenter — l'appelant doit ensuite appeler
+// consumeFixQuota() une fois la correction IA effectivement obtenue, jamais avant : une
+// suggestFix() qui échoue (report_no_fix) ou plante (erreur GitLab/GitHub) ne doit pas coûter
+// de quota à l'utilisateur pour un correctif qu'il n'a jamais reçu.
 export async function tryConsumeFixQuota(subscription: {
   id: string;
   plan: string;
@@ -393,7 +397,7 @@ export async function tryConsumeFixQuota(subscription: {
 }, recipientEmail: string): Promise<boolean> {
   const limit = QUOTAS[subscription.plan as "solo" | "business"]?.fixes ?? QUOTAS.solo.fixes;
 
-  const allowed = await warnOrBlockUsage({
+  return warnOrBlockUsage({
     subscriptionId: subscription.id,
     kind: "fixes",
     used: subscription.fixesUsedThisPeriod,
@@ -404,15 +408,14 @@ export async function tryConsumeFixQuota(subscription: {
         ? sendUsageLimitReachedEmail({ to: recipientEmail, resource: "correction IA", limit })
         : sendUsageLimitWarningEmail({ to: recipientEmail, resource: "correction IA", used: subscription.fixesUsedThisPeriod, limit }),
   });
+}
 
-  if (!allowed) return false;
-
+// À appeler uniquement après une suggestFix() réussie — voir tryConsumeFixQuota ci-dessus.
+export async function consumeFixQuota(subscriptionId: string): Promise<void> {
   await prisma.subscription.update({
-    where: { id: subscription.id },
+    where: { id: subscriptionId },
     data: { fixesUsedThisPeriod: { increment: 1 } },
   });
-
-  return true;
 }
 
 // Équivalent pour les analyses complètes de code par IA (performance/sécurité/architecture).
