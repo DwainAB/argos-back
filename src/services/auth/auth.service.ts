@@ -15,7 +15,7 @@ const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
-// Format E.164 (ex: +33612345678), requis par Twilio pour l'envoi de SMS.
+// Format E.164 (ex: +33612345678), accepté par Spot-Hit pour l'envoi de SMS.
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
 
 export class AuthError extends Error {

@@ -1,27 +1,36 @@
-import twilio from "twilio";
 import { env } from "../../config/env";
 
-const client = env.twilio.accountSid && env.twilio.authToken ? twilio(env.twilio.accountSid, env.twilio.authToken) : null;
+const SPOTHIT_ENDPOINT = "https://www.spot-hit.fr/api/envoyer/sms";
 
-// Compte Twilio en mode trial (aucune carte ajoutée) : l'API refuse tout texte libre et
-// n'accepte que l'un de ses templates prédéfinis, au contenu générique fixe (ex:
-// "sms_internal_alerts" -> "Alert: System downtime detected..."), impossible à
-// personnaliser avec le vrai texte de l'alerte. À retirer (et cette variable d'env) une
-// fois le compte passé en payant (console.twilio.com > Billing > Upgrade) — le texte réel
-// de l'alerte, déjà construit ci-dessous, partira alors normalement.
-const TRIAL_TEMPLATE_BODY = "sms_internal_alerts";
+// Mention de désinscription imposée par la CNIL pour tout SMS marketing/notification en
+// France (voir doc.spot-hit.fr/api/envoyer.html) — sans elle, Spot-Hit rejette l'envoi.
+const STOP_MENTION = "STOP au 36200";
+
+type SpothitResponse = { resultat: 1; id: string } | { resultat: 0; erreurs: string };
 
 async function send(params: { to: string; body: string }) {
-  if (!client) {
-    console.error("Twilio n'est pas configuré (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN manquants) — SMS non envoyé.");
+  if (!env.spothit.apiKey) {
+    console.error("Spot-Hit n'est pas configuré (SPOTHIT_API_KEY manquant) — SMS non envoyé.");
     return;
   }
 
-  await client.messages.create({
-    to: params.to,
-    from: env.twilio.fromPhoneNumber,
-    body: env.twilio.trialMode ? TRIAL_TEMPLATE_BODY : params.body,
+  const body = new URLSearchParams({
+    key: env.spothit.apiKey,
+    message: `${params.body} ${STOP_MENTION}`,
+    destinataires: params.to,
   });
+
+  const response = await fetch(SPOTHIT_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  const result = (await response.json()) as SpothitResponse;
+
+  if (result.resultat === 0) {
+    console.error(`Échec de l'envoi SMS via Spot-Hit (code erreur ${result.erreurs}).`);
+  }
 }
 
 export function sendAlertSms(params: { to: string; projectName: string; level: string; explanation: string }) {
