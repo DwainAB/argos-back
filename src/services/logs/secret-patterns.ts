@@ -22,7 +22,6 @@ const SECRET_PATTERNS: { label: string; regex: RegExp }[] = [
   { label: "Token Slack", regex: /xox[baprs]-[0-9A-Za-z-]{10,}/g },
   { label: "Clé privée (PEM)", regex: /-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g },
   { label: "Clé API Resend", regex: /re_[0-9A-Za-z_]{16,}/g },
-  { label: "Clé API Twilio", regex: /SK[0-9a-f]{32}/g },
   { label: "Clé API OpenAI", regex: /sk-[0-9A-Za-z]{20,}/g },
   { label: "Clé API Groq", regex: /gsk_[0-9A-Za-z]{20,}/g },
   {
