@@ -64,7 +64,8 @@ export const env = {
   },
   resend: {
     apiKey: process.env.RESEND_API_KEY ?? "",
-    fromEmail: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? "no-reply@ai-argos.com",
+    alertFromEmail: process.env.RESEND_ALERT_FROM_EMAIL ?? "alerts@ai-argos.com",
   },
   smsfactor: {
     apiToken: process.env.SMSFACTOR_API_TOKEN ?? "",

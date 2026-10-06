@@ -3,9 +3,9 @@ import { env } from "../../config/env";
 
 const resend = new Resend(env.resend.apiKey);
 
-async function send(params: { to: string; subject: string; html: string }) {
+async function send(params: { to: string; subject: string; html: string; from?: string }) {
   await resend.emails.send({
-    from: env.resend.fromEmail,
+    from: params.from ?? env.resend.fromEmail,
     to: params.to,
     subject: params.subject,
     html: params.html,
@@ -257,6 +257,7 @@ export function sendAlertEmail(params: {
 
   return send({
     to: params.to,
+    from: env.resend.alertFromEmail,
     subject: `[${params.projectName}] ${levelLabel} détecté`,
     html: layout({
       preheader: `${levelLabel} détecté sur ${params.projectName} : ${params.explanation}`,
