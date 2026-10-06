@@ -9,6 +9,7 @@ export type LogTriageResult = {
   // si le bouton "Demander une correction IA" est proposé (uniquement pour "code") — voir
   // alerts.route.ts et JOURNAL.md.
   fixLocation: "code" | "operational" | "external";
+  severityScore: number;
 };
 
 const SYSTEM_PROMPT = `Tu es un assistant qui aide à trier des logs d'application backend pour une équipe technique.
@@ -19,19 +20,20 @@ On te donne un log déjà classé comme "critical" ou "warning" par un premier f
 3. Si c'est un vrai problème (isRealIssue: true), déterminer où se situe la correction (fixLocation) — le critère décisif est : une modification du code source de l'application pourrait-elle raisonnablement résoudre ce problème précis ?
    - "code" : un bug applicatif corrigible en modifiant le code source (logique erronée, exception non gérée, mauvais appel, validation manquante, etc.) — la cause est dans ce que l'équipe a écrit, pas dans l'état d'une ressource externe.
    - "operational" : une panne ou un incident d'infrastructure propre à l'équipe, mais que changer du code ne résout pas — la ressource elle-même est en cause (base de données indisponible, serveur inaccessible, réseau interne coupé, disque plein, service interne down). L'équipe doit investiguer/redémarrer/reconfigurer sa propre infrastructure, pas modifier le code applicatif.
-   - "external" : seul cas où rien côté équipe applicative ne peut résoudre le problème — il faut se rendre sur l'espace client/compte d'un fournisseur tiers pour agir (recharger un crédit, changer de plan, renouveler quelque chose, mettre à jour une configuration chez ce tiers). Exemples stricts : quota ou crédit épuisé/proche de l'épuisement chez un fournisseur facturé à l'usage (API IA type OpenAI/Groq, SMS type Spot-Hit, email type Resend, hébergeur), certificat TLS expiré à renouveler chez l'autorité de certification, domaine/DNS mal configuré chez le registrar, limite du plan d'abonnement d'un service tiers atteinte, clé API révoquée ou expirée nécessitant d'en régénérer une dans la console du fournisseur.
+   - "external" : seul cas où rien côté équipe applicative ne peut résoudre le problème — il faut se rendre sur l'espace client/compte d'un fournisseur tiers pour agir (recharger un crédit, changer de plan, renouveler quelque chose, mettre à jour une configuration chez ce tiers). Exemples stricts : quota ou crédit épuisé/proche de l'épuisement chez un fournisseur facturé à l'usage (API IA type OpenAI/Groq, SMS type SMSFactor, email type Resend, hébergeur), certificat TLS expiré à renouveler chez l'autorité de certification, domaine/DNS mal configuré chez le registrar, limite du plan d'abonnement d'un service tiers atteinte, clé API révoquée ou expirée nécessitant d'en régénérer une dans la console du fournisseur.
    Ne classe JAMAIS en "external" une panne de connectivité vers une ressource que l'application possède elle-même (sa propre base de données, son propre serveur) — c'est "operational", même si le symptôme ressemble à un problème réseau.
 4. Rédiger l'explication (explanation) selon fixLocation :
    - "code" : description courte et claire de ce qui s'est probablement passé et de sa gravité, compréhensible par quelqu'un qui ne lit pas le code — sans indiquer de correctif précis, seulement la nature du problème.
    - "operational" : description courte de l'incident d'infrastructure et de son impact, puis ce que l'équipe doit vérifier/faire sur son propre système (ex: "La base de données de l'application est injoignable, ce qui empêche toute requête d'aboutir. Vérifiez la disponibilité du serveur de base de données et son réseau interne, et redémarrez-le si nécessaire."). Jamais de suggestion de modifier du code dans ce cas.
    - "external" : instructions concrètes à suivre, à la deuxième personne, disant précisément où aller et quoi faire (ex: "Vous approchez de la limite de votre quota OpenAI. Rendez-vous sur platform.openai.com pour ajouter des crédits avant d'atteindre la limite, sous peine de blocage des requêtes IA."). Jamais de suggestion de modifier du code dans ce cas.
+5. Si c'est un vrai problème (isRealIssue: true), attribuer une gravité (severityScore) sur une échelle de 1 à 10, pour nuancer deux alertes de même finalCategory entre elles : 1-3 = impact mineur ou limité (ex: un warning sans conséquence immédiate) ; 4-6 = gênant, à traiter mais pas urgent ; 7-8 = grave, impact significatif sur le service ou les utilisateurs ; 9-10 = critique majeur, service indisponible ou données compromises. Un "warning" se situera typiquement entre 1 et 5, un "critical" entre 6 et 10, mais juge au cas par cas plutôt que d'appliquer cette règle mécaniquement.
 
 L'explication doit toujours être rédigée en français, quelle que soit la langue du log source.
 
 Réponds UNIQUEMENT avec un objet JSON de la forme :
-{"isRealIssue": true ou false, "finalCategory": "info" ou "warning" ou "critical", "fixLocation": "code" ou "operational" ou "external", "explanation": "..."}
+{"isRealIssue": true ou false, "finalCategory": "info" ou "warning" ou "critical", "fixLocation": "code" ou "operational" ou "external", "severityScore": 1 à 10, "explanation": "..."}
 
-Si isRealIssue est false, fixLocation vaut "code" par défaut (sans effet, aucune alerte n'étant créée pour un faux positif) et "explanation" indique brièvement pourquoi ce n'est pas un problème réel. Si isRealIssue est true, "explanation" suit la règle du point 4 ci-dessus selon fixLocation (2-4 phrases, sans jargon inutile, sans supposition sur le code source que tu n'as pas vu).`;
+Si isRealIssue est false, fixLocation vaut "code" par défaut (sans effet, aucune alerte n'étant créée pour un faux positif), severityScore vaut 0, et "explanation" indique brièvement pourquoi ce n'est pas un problème réel. Si isRealIssue est true, "explanation" suit la règle du point 4 ci-dessus selon fixLocation (2-4 phrases, sans jargon inutile, sans supposition sur le code source que tu n'as pas vu).`;
 
 export async function triageLog(params: { level: string; category: string; message: string }): Promise<LogTriageResult> {
   const client = new OpenAI({ apiKey: env.groq.apiKey, baseURL: env.groq.baseUrl });
@@ -54,13 +56,17 @@ export async function triageLog(params: { level: string; category: string; messa
     const finalCategory = parsed?.finalCategory;
     const fixLocation =
       parsed?.fixLocation === "external" || parsed?.fixLocation === "operational" ? parsed.fixLocation : "code";
+    const severityScore =
+      typeof parsed?.severityScore === "number" && Number.isInteger(parsed.severityScore)
+        ? Math.min(10, Math.max(0, parsed.severityScore))
+        : 0;
 
     if (
       typeof parsed?.isRealIssue === "boolean" &&
       typeof parsed?.explanation === "string" &&
       (finalCategory === "info" || finalCategory === "warning" || finalCategory === "critical")
     ) {
-      return { isRealIssue: parsed.isRealIssue, finalCategory, explanation: parsed.explanation, fixLocation };
+      return { isRealIssue: parsed.isRealIssue, finalCategory, explanation: parsed.explanation, fixLocation, severityScore };
     }
   } catch {
     // Réponse Groq invalide, vide, ou requête échouée : repli prudent ci-dessous plutôt que
@@ -72,5 +78,6 @@ export async function triageLog(params: { level: string; category: string; messa
     finalCategory: params.category === "critical" ? "critical" : "warning",
     explanation: "Impossible d'obtenir une explication fiable de l'IA pour ce log ; à vérifier manuellement.",
     fixLocation: "code",
+    severityScore: params.category === "critical" ? 8 : 4,
   };
 }

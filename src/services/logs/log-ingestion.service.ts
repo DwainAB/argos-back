@@ -73,16 +73,27 @@ async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log
 
   if (triage.isRealIssue) {
     const alert = await prisma.alert.create({
-      data: { logEntryId, explanation: triage.explanation, fixLocation: triage.fixLocation },
+      data: {
+        logEntryId,
+        explanation: triage.explanation,
+        fixLocation: triage.fixLocation,
+        severityScore: triage.severityScore,
+      },
     });
 
-    notifyProjectRecipients(alert.id, projectId, triage.finalCategory, triage.explanation).catch((err) =>
-      console.error(`Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`, err)
+    notifyProjectRecipients(alert.id, projectId, triage.finalCategory, triage.explanation, triage.severityScore).catch(
+      (err) => console.error(`Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`, err)
     );
   }
 }
 
-async function notifyProjectRecipients(alertId: string, projectId: string, level: string, explanation: string) {
+async function notifyProjectRecipients(
+  alertId: string,
+  projectId: string,
+  level: string,
+  explanation: string,
+  severityScore: number
+) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { name: true, userId: true, organizationId: true, user: { select: { email: true } } },
@@ -112,7 +123,7 @@ async function notifyProjectRecipients(alertId: string, projectId: string, level
     if (smsAllowed) {
       smsAttempted = true;
       smsNotifications = phoneRecipients.map((to) =>
-        sendAlertSms({ to, projectName: project.name, level, explanation }).catch((err) =>
+        sendAlertSms({ to, projectName: project.name, severityScore }).catch((err) =>
           console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
         )
       );
