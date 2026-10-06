@@ -66,9 +66,8 @@ export const env = {
     apiKey: process.env.RESEND_API_KEY ?? "",
     fromEmail: process.env.RESEND_FROM_EMAIL ?? "onboarding@resend.dev",
   },
-  // Spot-Hit (doc.spot-hit.fr) — envoi des SMS d'alerte, voir sms.service.ts.
-  spothit: {
-    apiKey: process.env.SPOTHIT_API_KEY ?? "",
+  smsfactor: {
+    apiToken: process.env.SMSFACTOR_API_TOKEN ?? "",
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? "",

@@ -1,43 +1,55 @@
 import { env } from "../../config/env";
 
-const SPOTHIT_ENDPOINT = "https://www.spot-hit.fr/api/envoyer/sms";
+const SMSFACTOR_ENDPOINT = "https://api.smsfactor.com/send";
 
-// Mention de désinscription imposée par la CNIL pour tout SMS marketing/notification en
-// France (voir doc.spot-hit.fr/api/envoyer.html) — sans elle, Spot-Hit rejette l'envoi.
-const STOP_MENTION = "STOP au 36200";
+const SENDER_ID = "Argos";
 
-type SpothitResponse = { resultat: 1; id: string } | { resultat: 0; erreurs: string };
+type SmsfactorResponse = { status: number; message: string };
 
 async function send(params: { to: string; body: string }) {
-  if (!env.spothit.apiKey) {
-    console.error("Spot-Hit n'est pas configuré (SPOTHIT_API_KEY manquant) — SMS non envoyé.");
+  if (!env.smsfactor.apiToken) {
+    console.error("SMSFactor n'est pas configuré (SMSFACTOR_API_TOKEN manquant) — SMS non envoyé.");
     return;
   }
 
-  const body = new URLSearchParams({
-    key: env.spothit.apiKey,
-    message: `${params.body} ${STOP_MENTION}`,
-    destinataires: params.to,
+  const query = new URLSearchParams({ text: params.body, to: params.to, sender: SENDER_ID });
+
+  const response = await fetch(`${SMSFACTOR_ENDPOINT}?${query}`, {
+    headers: {
+      Authorization: `Bearer ${env.smsfactor.apiToken}`,
+      Accept: "application/json",
+    },
   });
 
-  const response = await fetch(SPOTHIT_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  const result = (await response.json()) as SmsfactorResponse;
 
-  const result = (await response.json()) as SpothitResponse;
-
-  if (result.resultat === 0) {
-    console.error(`Échec de l'envoi SMS via Spot-Hit (code erreur ${result.erreurs}).`);
+  if (result.status !== 1) {
+    console.error(`Échec de l'envoi SMS via SMSFactor (${result.message}).`);
   }
 }
 
-export function sendAlertSms(params: { to: string; projectName: string; level: string; explanation: string }) {
-  const levelLabel = params.level === "critical" ? "Erreur critique" : "Avertissement";
+function greeting(now: Date): "Bonjour" | "Bonsoir" {
+  const hour = Number(
+    new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "numeric", hourCycle: "h23" }).format(now)
+  );
+  return hour < 12 ? "Bonjour" : "Bonsoir";
+}
+
+function formatDateTime(now: Date): string {
+  return new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now);
+}
+
+export function sendAlertSms(params: { to: string; projectName: string; severityScore: number }) {
+  const now = new Date();
 
   return send({
     to: params.to,
-    body: `Argos AI — [${params.projectName}] ${levelLabel} détecté : ${params.explanation}`,
+    body: `${greeting(now)}, une alerte de niveau ${params.severityScore}/10 a été détectée sur le projet ${params.projectName} le ${formatDateTime(now)}.`,
   });
 }

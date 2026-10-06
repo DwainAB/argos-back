@@ -378,6 +378,8 @@ model Alert {
   // que pour "code".
   fixLocation String @default("code")
 
+  severityScore Int?
+
   resolvedAt DateTime?
 
   proposedFilePath    String? @db.Text
