@@ -8,6 +8,18 @@ export async function bootstrapRailwayLogStreams() {
       railwayServiceId: { not: null },
       railwayEnvironmentId: { not: null },
       archivedAt: null,
+      // Ne relance jamais le streaming d'un projet dont l'abonnement est bloqué pour paiement
+      // en retard persistant (voir billing-grace-period.job.ts) — sinon un simple redémarrage
+      // du serveur contournerait le blocage. L'abonnement est porté par l'organisation si le
+      // projet en a une, sinon par son propriétaire direct (userId) — jamais les deux à la fois.
+      // `isNot` (pas un filtre imbriqué direct) pour qu'un projet dont le compte n'a encore
+      // aucun abonnement (cas rare mais possible) ne soit jamais exclu à tort : Prisma exclut
+      // un parent sans relation correspondante sur un filtre imbriqué direct, alors que
+      // "pas d'abonnement" doit se comporter comme "non bloqué", pas comme "bloqué".
+      OR: [
+        { organizationId: { not: null }, organization: { subscription: { isNot: { blockedAt: { not: null } } } } },
+        { organizationId: null, user: { subscription: { isNot: { blockedAt: { not: null } } } } },
+      ],
     },
   });
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
+import { env } from "../config/env";
 import {
   QUOTAS,
   SubscriptionError,
@@ -21,13 +22,25 @@ subscriptionRouter.get("/api/subscription/me", async (req, res) => {
 
     const quotas = QUOTAS[subscription.plan as "solo" | "business"] ?? QUOTAS.solo;
 
+    // paymentGraceDeadline : date limite avant blocage, calculée seulement si un échec de
+    // paiement est en cours et pas déjà bloqué — permet au frontend d'afficher un compte à
+    // rebours ("réglez avant le X ou l'accès sera bloqué") plutôt qu'un simple statut brut.
+    const paymentGraceDeadline =
+      subscription.lastPaymentFailedAt && !subscription.blockedAt
+        ? new Date(subscription.lastPaymentFailedAt.getTime() + env.billing.paymentGracePeriodDays * 24 * 60 * 60 * 1000)
+        : null;
+
     res.json({
       subscription: {
         plan: subscription.plan,
         status: subscription.status,
         currentPeriodEnd: subscription.currentPeriodEnd,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        blocked: !!subscription.blockedAt,
+        paymentGraceDeadline,
         sms: { used: subscription.smsUsedThisPeriod, limit: quotas.sms },
         fixes: { used: subscription.fixesUsedThisPeriod, limit: quotas.fixes },
+        codeAnalyses: { used: subscription.codeAnalysesUsedThisPeriod, limit: quotas.codeAnalyses },
       },
     });
   } catch (err) {

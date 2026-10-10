@@ -100,7 +100,18 @@ model Subscription {
   stripeCustomerId     String  @unique
   stripeSubscriptionId String? @unique
 
-  currentPeriodEnd DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  lastPaymentFailedAt DateTime?
+
+  // Rempli par blockOverduePaymentsJob (jobs/billing-grace-period.job.ts) quand un paiement
+  // reste en échec plus de PAYMENT_GRACE_PERIOD_DAYS après lastPaymentFailedAt — coupe l'accès
+  // ET le streaming de logs, indépendamment de `status` (qui reste le reflet brut du statut
+  // Stripe, jamais une valeur inventée) : un abonnement "past_due" depuis 1 jour est encore
+  // dans le délai de grâce (non bloqué), depuis 5 jours il est bloqué, dans les deux cas
+  // `status` vaut toujours "past_due" côté Stripe. Remis à null dès qu'un paiement réussit
+  // (invoice.paid) ou que l'abonnement est résilié (devient alors "canceled" à la place).
+  blockedAt DateTime?
 
   smsUsedThisPeriod          Int @default(0)
   fixesUsedThisPeriod        Int @default(0)
@@ -114,6 +125,16 @@ model Subscription {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+}
+
+// Déduplication des événements webhook Stripe : Stripe garantit une livraison "au moins une
+// fois" et peut renvoyer un même événement plusieurs fois (retry réseau, timeout). Chaque
+// event.id est inséré avant traitement (contrainte unique) — un doublon échoue l'insertion et
+// n'est jamais traité deux fois (voir handleStripeWebhookEvent).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }
 
 // Clé API Render enregistrée une fois par l'utilisateur (ou par l'organisation, partagée par

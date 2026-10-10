@@ -1,48 +1,7 @@
 import Stripe from "stripe";
 import { prisma } from "../../lib/prisma";
-import { SOLO_PROJECT_LIMIT, createPlanChangePortalSession } from "./subscription.service";
-import {
-  stopLogStreamForProject as stopRailwayLogStreamForProject,
-  startLogStreamForProject as startRailwayLogStreamForProject,
-} from "../providers/railway/railway-log-stream.service";
-import {
-  stopLogStreamForProject as stopRenderLogStreamForProject,
-  startLogStreamForProject as startRenderLogStreamForProject,
-} from "../providers/render/render-log-stream.service";
-import { decryptSecret } from "../../lib/encryption";
-
-// Reprend/arrête le streaming de logs d'un projet quel que soit son fournisseur d'hébergement
-// (Railway, Render, ...) — un projet n'a jamais qu'un seul fournisseur connecté à la fois.
-function stopLogStreamForProject(projectId: string) {
-  stopRailwayLogStreamForProject(projectId);
-  stopRenderLogStreamForProject(projectId);
-}
-
-function startLogStreamForAnyProvider(project: {
-  id: string;
-  railwayProjectToken: string | null;
-  railwayServiceId: string | null;
-  railwayEnvironmentId: string | null;
-  renderApiKeyRef: { encryptedKey: string } | null;
-  renderOwnerId: string | null;
-  renderResourceId: string | null;
-}) {
-  if (project.railwayProjectToken && project.railwayServiceId && project.railwayEnvironmentId) {
-    startRailwayLogStreamForProject({
-      id: project.id,
-      railwayProjectToken: project.railwayProjectToken,
-      railwayServiceId: project.railwayServiceId,
-      railwayEnvironmentId: project.railwayEnvironmentId,
-    }).catch((err) => console.error(`Échec de la reprise du streaming pour le projet ${project.id} :`, err));
-  } else if (project.renderApiKeyRef && project.renderOwnerId && project.renderResourceId) {
-    startRenderLogStreamForProject({
-      id: project.id,
-      renderApiKey: decryptSecret(project.renderApiKeyRef.encryptedKey),
-      renderOwnerId: project.renderOwnerId,
-      renderResourceId: project.renderResourceId,
-    }).catch((err) => console.error(`Échec de la reprise du streaming pour le projet ${project.id} :`, err));
-  }
-}
+import { SOLO_PROJECT_LIMIT, createPlanChangePortalSession, scheduleDowngradeAtPeriodEnd } from "./subscription.service";
+import { startLogStreamForAnyProvider, stopLogStreamForProject } from "./log-stream-control.service";
 
 export class PlanChangeError extends Error {
   constructor(
@@ -98,29 +57,32 @@ async function applyUpgradeToBusiness(userId: string, subscriptionId: string, or
     select: { id: true },
   });
 
-  const organization = await prisma.$transaction(async (tx) => {
-    const organization = await tx.organization.create({ data: { name: organizationName } });
+  const organization = await prisma.$transaction(
+    async (tx) => {
+      const organization = await tx.organization.create({ data: { name: organizationName } });
 
-    await tx.organizationMembership.create({
-      data: { organizationId: organization.id, userId, role: "admin" },
-    });
+      await tx.organizationMembership.create({
+        data: { organizationId: organization.id, userId, role: "admin" },
+      });
 
-    await tx.project.updateMany({
-      where: { userId },
-      data: { organizationId: organization.id, archivedAt: null },
-    });
+      await tx.project.updateMany({
+        where: { userId },
+        data: { organizationId: organization.id, archivedAt: null },
+      });
 
-    await tx.projectShare.deleteMany({ where: { project: { userId } } });
+      await tx.projectShare.deleteMany({ where: { project: { userId } } });
 
-    await tx.user.update({ where: { id: userId }, data: { accountType: "organization", organizationName } });
+      await tx.user.update({ where: { id: userId }, data: { accountType: "organization", organizationName } });
 
-    await tx.subscription.update({
-      where: { id: subscriptionId },
-      data: { userId: null, organizationId: organization.id, plan: "business" },
-    });
+      await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: { userId: null, organizationId: organization.id, plan: "business" },
+      });
 
-    return organization;
-  });
+      return organization;
+    },
+    { timeout: 30_000 },
+  );
 
   for (const project of archivedProjectIds) {
     const full = await prisma.project.findUnique({
@@ -194,46 +156,68 @@ async function applyDowngradeToSolo(input: { userId: string; organizationId: str
     select: { id: true },
   });
   const keepSet = new Set(keepProjectIds);
-  const projectsToArchive = activeProjects.filter((p) => !keepSet.has(p.id));
+  const projectsToDelete = activeProjects.filter((p) => !keepSet.has(p.id));
 
-  await prisma.$transaction(async (tx) => {
-    for (const project of projectsToArchive) {
-      await tx.project.update({ where: { id: project.id }, data: { archivedAt: new Date() } });
-    }
-
-    await tx.projectShare.deleteMany({ where: { project: { organizationId } } });
-
-    await tx.project.updateMany({
-      where: { organizationId },
-      data: { organizationId: null },
-    });
-
-    await tx.subscription.update({
-      where: { id: subscriptionId },
-      data: { organizationId: null, userId, plan: "solo" },
-    });
-
-    await tx.organizationMembership.delete({ where: { userId } });
-    await tx.organization.delete({ where: { id: organizationId } });
-
-    await tx.user.update({ where: { id: userId }, data: { accountType: "personal", organizationName: null } });
-  });
-
-  for (const project of projectsToArchive) {
+  // Arrêté avant suppression : un log reçu pendant la transaction ne doit jamais tenter
+  // d'écrire un LogEntry référençant un projet déjà effacé.
+  for (const project of projectsToDelete) {
     stopLogStreamForProject(project.id);
   }
+
+  await prisma.$transaction(
+    async (tx) => {
+      // Suppression définitive (pas d'archivage) des projets non conservés — emporte en
+      // cascade tout leur historique (LogEntry, Alert, CodeAnalysis, ProjectShare), pour ne pas
+      // laisser s'accumuler en base des projets inactifs sans limite de durée. Irréversible :
+      // un réabonnement Business ultérieur ne les restaure pas.
+      for (const project of projectsToDelete) {
+        await tx.project.delete({ where: { id: project.id } });
+      }
+
+      await tx.projectShare.deleteMany({ where: { project: { organizationId } } });
+
+      await tx.project.updateMany({
+        where: { organizationId },
+        data: { organizationId: null },
+      });
+
+      await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: { organizationId: null, userId, plan: "solo" },
+      });
+
+      await tx.organizationMembership.delete({ where: { userId } });
+      await tx.organization.delete({ where: { id: organizationId } });
+
+      await tx.user.update({ where: { id: userId }, data: { accountType: "personal", organizationName: null } });
+    },
+    // Timeout par défaut (5s) trop court dès que plusieurs projets sont supprimés en cascade
+    // sur une base distante (latence réseau observée jusqu'à plusieurs secondes par requête
+    // sur l'instance Railway) — valeur plus généreuse pour ne jamais interrompre la transaction
+    // en plein milieu (ce qui laisserait l'organisation dans un état incohérent).
+    { timeout: 30_000 },
+  );
 }
 
-export async function downgradeToSoloPlan(input: { userId: string; keepProjectIds?: string[]; returnUrl: string }): Promise<string> {
-  const { userId, keepProjectIds, returnUrl } = input;
+// Diffère le downgrade à la fin de la période de facturation en cours, sans proration (voir
+// scheduleDowngradeAtPeriodEnd) — à la différence de l'upgrade, immédiat et facturé au
+// prorata, pas de redirection vers le Customer Portal : rien à confirmer/payer, le changement
+// s'applique seul à la date retournée.
+export async function downgradeToSoloPlan(input: { userId: string; keepProjectIds?: string[] }): Promise<{ effectiveAt: Date }> {
+  const { userId, keepProjectIds } = input;
 
   const { subscription } = await assertCanDowngradeToSolo(userId, keepProjectIds);
 
-  return createPlanChangePortalSession(subscription.id, returnUrl, {
+  return scheduleDowngradeAtPeriodEnd(subscription.id, "solo", {
     keepProjectIds: JSON.stringify(keepProjectIds ?? []),
   });
 }
 
+// Appelée depuis le webhook Stripe (voir subscription.service.ts::syncPlanFromStripeSubscription)
+// une fois le changement de Price confirmé par un paiement. Lève systématiquement en cas
+// d'état incohérent plutôt que d'ignorer silencieusement : le webhook route répond alors 500 à
+// Stripe, qui retente l'événement (jusqu'à ~3 jours) au lieu de considérer, à tort, le
+// changement de plan comme appliqué.
 export async function applyConfirmedPlanChange(
   subscriptionId: string,
   newPlan: "solo" | "business",
@@ -243,28 +227,26 @@ export async function applyConfirmedPlanChange(
 
   if (newPlan === "business") {
     if (!subscription.userId) {
-      console.error(`Upgrade confirmé pour l'abonnement ${subscriptionId} mais aucun userId porteur — ignoré.`);
-      return;
+      throw new Error(`Upgrade confirmé pour l'abonnement ${subscriptionId} mais aucun userId porteur.`);
     }
     const organizationName = metadata.organizationName?.trim();
     if (!organizationName) {
-      console.error(`Upgrade confirmé pour l'abonnement ${subscriptionId} mais organizationName absent des metadata — ignoré.`);
-      return;
+      throw new Error(`Upgrade confirmé pour l'abonnement ${subscriptionId} mais organizationName absent des metadata.`);
     }
     await applyUpgradeToBusiness(subscription.userId, subscriptionId, organizationName);
     return;
   }
 
   if (!subscription.organizationId) {
-    console.error(`Downgrade confirmé pour l'abonnement ${subscriptionId} mais aucune organizationId porteuse — ignoré.`);
-    return;
+    throw new Error(`Downgrade confirmé pour l'abonnement ${subscriptionId} mais aucune organizationId porteuse.`);
   }
   const membership = await prisma.organizationMembership.findFirst({
     where: { organizationId: subscription.organizationId, role: "admin" },
   });
   if (!membership) {
-    console.error(`Downgrade confirmé pour l'abonnement ${subscriptionId} mais aucun admin trouvé pour l'organisation ${subscription.organizationId} — ignoré.`);
-    return;
+    throw new Error(
+      `Downgrade confirmé pour l'abonnement ${subscriptionId} mais aucun admin trouvé pour l'organisation ${subscription.organizationId}.`,
+    );
   }
   let keepProjectIds: string[] = [];
   try {

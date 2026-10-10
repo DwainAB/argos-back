@@ -88,4 +88,9 @@ export const env = {
     // rétention Railway. Au-delà, les logs sont purgés définitivement (voir log-retention.job.ts).
     days: Number(process.env.LOG_RETENTION_DAYS ?? 7),
   },
+  billing: {
+    // Délai laissé après un premier échec de paiement (invoice.payment_failed) avant de
+    // bloquer l'accès et d'arrêter le streaming de logs — voir billing-grace-period.job.ts.
+    paymentGracePeriodDays: Number(process.env.PAYMENT_GRACE_PERIOD_DAYS ?? 3),
+  },
 };

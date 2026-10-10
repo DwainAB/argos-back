@@ -1,7 +1,8 @@
 import Stripe from "stripe";
 import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
-import { sendUsageLimitReachedEmail, sendUsageLimitWarningEmail } from "../notifications/email.service";
+import { sendPaymentFailedEmail, sendUsageLimitReachedEmail, sendUsageLimitWarningEmail } from "../notifications/email.service";
+import { startAllLogStreamsForSubscription, stopAllLogStreamsForSubscription } from "./log-stream-control.service";
 
 const stripe = env.stripe.secretKey ? new Stripe(env.stripe.secretKey) : null;
 
@@ -76,15 +77,26 @@ export async function createPendingSubscription(input: {
 
   const customer = await client.customers.create({ email });
 
-  return prisma.subscription.create({
-    data: {
-      userId: ownerType === "user" ? ownerId : undefined,
-      organizationId: ownerType === "organization" ? ownerId : undefined,
-      plan,
-      status: "incomplete",
-      stripeCustomerId: customer.id,
-    },
-  });
+  try {
+    return await prisma.subscription.create({
+      data: {
+        userId: ownerType === "user" ? ownerId : undefined,
+        organizationId: ownerType === "organization" ? ownerId : undefined,
+        plan,
+        status: "incomplete",
+        stripeCustomerId: customer.id,
+      },
+    });
+  } catch (err) {
+    // Deux requêtes concurrentes (ex: double-clic) peuvent chacune créer un client Stripe
+    // avant qu'une seule des deux gagne la contrainte unique (userId/organizationId) côté
+    // Prisma — celle qui perd doit supprimer son client Stripe devenu orphelin, sous peine de
+    // le laisser traîner indéfiniment sans jamais être rattaché à un abonnement.
+    await client.customers.del(customer.id).catch((deleteErr) =>
+      console.error(`Impossible de supprimer le client Stripe orphelin ${customer.id} :`, deleteErr),
+    );
+    throw err;
+  }
 }
 
 // Retrouve l'abonnement dont dépend l'utilisateur connecté, ou en crée un nouveau
@@ -267,6 +279,66 @@ export async function createPlanChangePortalSession(
   return session.url;
 }
 
+// Programme un downgrade (changement vers un Price moins cher) pour la fin de la période de
+// facturation en cours, sans aucune proration — contrairement à un changement de plan
+// classique (voir createPlanChangePortalSession), facturé et appliqué immédiatement. Choix
+// délibéré pour ne jamais générer de crédit à rembourser ou à déduire d'une facture future,
+// et pour empêcher l'abus "upgrade Business temporaire puis downgrade juste avant le
+// renouvellement pour payer moins" (l'upgrade, lui, reste immédiat et facturé au prorata).
+//
+// Les metadata (ex: keepProjectIds) sont posées sur la phase qui active le nouveau Price : elles
+// ne s'appliquent à Subscription.metadata qu'au moment où Stripe bascule réellement sur cette
+// phase (voir doc Stripe sur les phases de schedule) — donc lues par syncPlanFromStripeSubscription
+// au moment exact de la transition, jamais avant.
+export async function scheduleDowngradeAtPeriodEnd(
+  subscriptionId: string,
+  newPlan: "solo" | "business",
+  metadata: PendingPlanChangeMetadata = {},
+): Promise<{ effectiveAt: Date }> {
+  const client = requireStripe();
+
+  const subscription = await prisma.subscription.findUniqueOrThrow({ where: { id: subscriptionId } });
+  const { stripeSubscriptionId, itemId } = await requireStripeSubscriptionItem(client, subscription);
+
+  await voidStaleOpenInvoices(client, stripeSubscriptionId);
+
+  const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
+  const currentPeriodEnd = currentPeriodEndOf(stripeSubscription);
+  if (!currentPeriodEnd) {
+    throw new SubscriptionError("Impossible de déterminer la fin de la période de facturation en cours.", 500);
+  }
+
+  // Un abonnement déjà piloté par un schedule (ex: un précédent downgrade programmé, pas
+  // encore appliqué) ne peut pas en recevoir un second — on réutilise celui existant plutôt
+  // que d'échouer, en le remplaçant par les nouvelles phases demandées.
+  const existingScheduleId =
+    typeof stripeSubscription.schedule === "string" ? stripeSubscription.schedule : stripeSubscription.schedule?.id;
+
+  const schedule = existingScheduleId
+    ? await client.subscriptionSchedules.retrieve(existingScheduleId)
+    : await client.subscriptionSchedules.create({ from_subscription: stripeSubscriptionId });
+
+  await client.subscriptionSchedules.update(schedule.id, {
+    end_behavior: "release",
+    phases: [
+      {
+        items: [{ price: schedule.phases[0].items[0].price as string, quantity: 1 }],
+        start_date: schedule.phases[0].start_date,
+        end_date: Math.floor(currentPeriodEnd.getTime() / 1000),
+        proration_behavior: "none",
+      },
+      {
+        items: [{ price: priceIdForPlan(newPlan), quantity: 1 }],
+        start_date: Math.floor(currentPeriodEnd.getTime() / 1000),
+        proration_behavior: "none",
+        metadata,
+      },
+    ],
+  });
+
+  return { effectiveAt: currentPeriodEnd };
+}
+
 // Crée l'URL du Customer Portal Stripe (gestion de moyen de paiement, factures, résiliation).
 export async function createBillingPortalSession(subscriptionId: string) {
   const client = requireStripe();
@@ -312,11 +384,16 @@ export async function getSubscriptionForProject(project: { userId: string; organ
   return getSubscriptionForUser(project.userId);
 }
 
-// Un abonnement donne accès au produit s'il est en cours d'essai ou payé à jour — jamais
-// pour "incomplete" (paiement jamais finalisé), "past_due" (échec de prélèvement) ou
-// "canceled".
-export function hasActiveAccess(subscription: { status: string } | null): boolean {
-  return subscription?.status === "trialing" || subscription?.status === "active";
+// Un abonnement donne accès au produit s'il est en cours d'essai ou payé à jour, ou en échec
+// de paiement ("past_due") tant que le délai de grâce n'est pas dépassé (blockedAt encore
+// null — voir billing-grace-period.job.ts) : l'utilisateur garde l'accès complet pendant ces
+// quelques jours, avec juste un avertissement affiché (voir BillingContent.tsx côté
+// frontend), plutôt que d'être expulsé du dashboard dès le premier échec. Jamais pour
+// "incomplete" (paiement jamais finalisé), "canceled", ou "past_due" une fois bloqué.
+export function hasActiveAccess(subscription: { status: string; blockedAt?: Date | null } | null): boolean {
+  if (!subscription) return false;
+  if (subscription.status === "trialing" || subscription.status === "active") return true;
+  return subscription.status === "past_due" && !subscription.blockedAt;
 }
 
 async function warnOrBlockUsage(params: {
@@ -449,10 +526,48 @@ export async function tryConsumeCodeAnalysisQuota(subscription: {
   return true;
 }
 
+// Détecte un changement de Price actif côté Stripe (upgrade/downgrade confirmé par un
+// paiement) et applique la bascule métier correspondante (création/suppression d'organisation,
+// archivage de projets) si elle n'a pas déjà eu lieu. Appelé à la fois depuis "invoice.paid" et
+// "customer.subscription.updated" : si l'un des deux événements est manqué, l'autre rattrape
+// quand même la désynchronisation entre Subscription.plan et le Price réellement facturé.
+async function syncPlanFromStripeSubscription(subscription: { id: string; plan: string }, stripeSubscription: Stripe.Subscription) {
+  const activePriceId = stripeSubscription.items.data[0]?.price.id;
+  const newPlan =
+    activePriceId === priceIdForPlan("business") ? "business" : activePriceId === priceIdForPlan("solo") ? "solo" : null;
+
+  if (newPlan && newPlan !== subscription.plan) {
+    const { applyConfirmedPlanChange } = await import("./plan-change.service");
+    await applyConfirmedPlanChange(subscription.id, newPlan, stripeSubscription.metadata);
+  }
+}
+
 // Traite les événements du webhook Stripe. Volontairement permissif sur les types
 // d'événements non gérés (les ignore) — Stripe peut envoyer bien plus d'événements que
 // ceux qui nous intéressent.
+//
+// Stripe garantit une livraison "au moins une fois" : un même événement peut être reçu
+// plusieurs fois (retry réseau, timeout). L'event.id n'est inséré dans StripeEvent qu'après un
+// traitement réussi (jamais avant) : si le traitement lève, rien n'est enregistré et un retry
+// Stripe ultérieur du même event.id est retraité normalement plutôt que vu comme un doublon.
 export async function handleStripeWebhookEvent(event: Stripe.Event) {
+  const alreadyProcessed = await prisma.stripeEvent.findUnique({ where: { id: event.id } });
+  if (alreadyProcessed) {
+    console.error(`Événement Stripe ${event.id} (${event.type}) déjà traité — ignoré.`);
+    return;
+  }
+
+  await processStripeWebhookEvent(event);
+
+  // Contrainte unique en filet de secours (deux requêtes concurrentes pour le même event.id,
+  // rare mais possible) : une violation signifie que l'autre requête a gagné la course, pas
+  // une erreur à propager — le traitement a de toute façon déjà eu lieu une fois.
+  await prisma.stripeEvent.create({ data: { id: event.id, type: event.type } }).catch((err) => {
+    if (!(err && typeof err === "object" && "code" in err && err.code === "P2002")) throw err;
+  });
+}
+
+async function processStripeWebhookEvent(event: Stripe.Event) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -470,6 +585,7 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
           stripeSubscriptionId: stripeSubscription.id,
           status: stripeSubscription.status,
           currentPeriodEnd: currentPeriodEndOf(stripeSubscription),
+          cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
         },
       });
 
@@ -493,8 +609,11 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
         data: {
           status: stripeSubscription.status,
           currentPeriodEnd: currentPeriodEndOf(stripeSubscription),
+          cancelAtPeriodEnd: stripeSubscription.cancel_at_period_end,
         },
       });
+
+      await syncPlanFromStripeSubscription(subscription, stripeSubscription);
       return;
     }
 
@@ -505,7 +624,12 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       });
       if (!subscription) return;
 
-      await prisma.subscription.update({ where: { id: subscription.id }, data: { status: "canceled" } });
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: "canceled", cancelAtPeriodEnd: false },
+      });
+
+      await stopAllLogStreamsForSubscription(subscription);
       return;
     }
 
@@ -524,6 +648,8 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
         where: { id: subscription.id },
         data: {
           status: "active",
+          lastPaymentFailedAt: null,
+          blockedAt: null,
           smsUsedThisPeriod: 0,
           fixesUsedThisPeriod: 0,
           codeAnalysesUsedThisPeriod: 0,
@@ -533,20 +659,16 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
         },
       });
 
+      // Paiement régularisé après un blocage (voir billing-grace-period.job.ts) : le streaming,
+      // arrêté pendant le blocage, doit reprendre — sans ça, l'accès reviendrait côté UI sans
+      // que les logs recommencent réellement à être collectés.
+      if (subscription.blockedAt) {
+        await startAllLogStreamsForSubscription(subscription);
+      }
+
       const client = requireStripe();
       const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
-      const activePriceId = stripeSubscription.items.data[0]?.price.id;
-      const newPlan =
-        activePriceId === priceIdForPlan("business")
-          ? "business"
-          : activePriceId === priceIdForPlan("solo")
-            ? "solo"
-            : null;
-
-      if (newPlan && newPlan !== subscription.plan) {
-        const { applyConfirmedPlanChange } = await import("./plan-change.service");
-        await applyConfirmedPlanChange(subscription.id, newPlan, stripeSubscription.metadata);
-      }
+      await syncPlanFromStripeSubscription(subscription, stripeSubscription);
 
       return;
     }
@@ -564,7 +686,23 @@ export async function handleStripeWebhookEvent(event: Stripe.Event) {
       const client = requireStripe();
       const stripeSubscription = await client.subscriptions.retrieve(stripeSubscriptionId);
 
-      await prisma.subscription.update({ where: { id: subscription.id }, data: { status: stripeSubscription.status } });
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { status: stripeSubscription.status, lastPaymentFailedAt: new Date() },
+      });
+
+      const recipient = subscription.userId
+        ? await prisma.user.findUnique({ where: { id: subscription.userId }, select: { email: true, firstName: true } })
+        : await prisma.organizationMembership.findFirst({
+            where: { organizationId: subscription.organizationId ?? undefined, role: "admin" },
+            select: { user: { select: { email: true, firstName: true } } },
+          }).then((m) => m?.user ?? null);
+
+      if (recipient) {
+        await sendPaymentFailedEmail({ to: recipient.email, firstName: recipient.firstName }).catch((err) =>
+          console.error(`Erreur lors de l'envoi de l'email d'échec de paiement pour l'abonnement ${subscription.id} :`, err),
+        );
+      }
       return;
     }
 
