@@ -74,13 +74,12 @@ planChangeRouter.post("/api/subscription/upgrade-to-business", async (req, res) 
 planChangeRouter.post("/api/subscription/downgrade-to-solo", async (req, res) => {
   try {
     const keepProjectIds = Array.isArray(req.body?.keepProjectIds) ? req.body.keepProjectIds : undefined;
-    const portalUrl = await downgradeToSoloPlan({
+    const { effectiveAt } = await downgradeToSoloPlan({
       userId: req.userId as string,
       keepProjectIds,
-      returnUrl: PLAN_CHANGE_RETURN_URL,
     });
 
-    res.json({ portalUrl });
+    res.json({ effectiveAt });
   } catch (err) {
     if (err instanceof PlanChangeError || err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });

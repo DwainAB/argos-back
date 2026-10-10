@@ -243,6 +243,23 @@ export function sendUsageLimitReachedEmail(params: { to: string; resource: strin
   });
 }
 
+export function sendPaymentFailedEmail(params: { to: string; firstName: string }) {
+  return send({
+    to: params.to,
+    subject: "Échec de paiement sur votre abonnement Argos AI",
+    html: layout({
+      preheader: "Le dernier prélèvement de votre abonnement a échoué.",
+      badge: { label: "PAIEMENT ÉCHOUÉ", color: BRAND.critical, bg: BRAND.criticalSoft },
+      body: `
+        <p style="${TITLE}">Échec de paiement</p>
+        <p style="${TEXT}">Bonjour ${params.firstName},</p>
+        <p style="${TEXT_LAST}">Le dernier prélèvement de votre abonnement Argos AI a échoué. Mettez à jour votre moyen de paiement pour conserver l'accès à votre compte.</p>
+        ${button({ href: `${env.frontendUrl}/dashboard/organizations/billing`, label: "Mettre à jour mon moyen de paiement" })}
+      `,
+    }),
+  });
+}
+
 export function sendAlertEmail(params: {
   to: string;
   projectName: string;

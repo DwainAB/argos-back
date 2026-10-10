@@ -5,6 +5,7 @@ import { stopAllLogStreams as stopAllRailwayLogStreams } from "./services/provid
 import { bootstrapRenderLogStreams } from "./services/providers/render/render-log-stream-bootstrap.service";
 import { stopAllLogStreams as stopAllRenderLogStreams } from "./services/providers/render/render-log-stream.service";
 import { scheduleLogRetentionJob } from "./jobs/log-retention.job";
+import { scheduleBillingGracePeriodJob } from "./jobs/billing-grace-period.job";
 
 const app = createApp();
 
@@ -13,6 +14,7 @@ app.listen(env.port, () => {
   bootstrapRailwayLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Railway :", err));
   bootstrapRenderLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Render :", err));
   scheduleLogRetentionJob();
+  scheduleBillingGracePeriodJob();
 });
 
 function stopAllLogStreams() {

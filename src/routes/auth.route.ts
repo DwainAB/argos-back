@@ -36,17 +36,17 @@ const SESSION_COOKIE_OPTIONS = {
 
 // L'abonnement d'un compte est le sien propre (compte personnel non membre d'une
 // organisation) ou celui, partagé, de l'organisation dont il est membre.
-async function findSubscriptionStatus(user: {
+async function findSubscription(user: {
   id: string;
   membership?: { organizationId: string } | null;
-}): Promise<string | null> {
-  if (user.membership) {
-    const subscription = await prisma.subscription.findUnique({ where: { organizationId: user.membership.organizationId } });
-    return subscription?.status ?? null;
-  }
+}): Promise<{ status: string; blockedAt: Date | null; lastPaymentFailedAt: Date | null } | null> {
+  const subscription = user.membership
+    ? await prisma.subscription.findUnique({ where: { organizationId: user.membership.organizationId } })
+    : await prisma.subscription.findUnique({ where: { userId: user.id } });
 
-  const subscription = await prisma.subscription.findUnique({ where: { userId: user.id } });
-  return subscription?.status ?? null;
+  return subscription
+    ? { status: subscription.status, blockedAt: subscription.blockedAt, lastPaymentFailedAt: subscription.lastPaymentFailedAt }
+    : null;
 }
 
 async function toPublicUser(user: {
@@ -60,7 +60,14 @@ async function toPublicUser(user: {
   createdAt: Date;
   membership?: { role: string; organizationId: string } | null;
 }) {
-  const subscriptionStatus = await findSubscriptionStatus(user);
+  const subscription = await findSubscription(user);
+
+  // Même logique que /api/subscription/me (voir subscription.route.ts) : la date limite
+  // n'a de sens que pendant le délai de grâce lui-même (échec en cours, pas déjà bloqué).
+  const paymentGraceDeadline =
+    subscription?.lastPaymentFailedAt && !subscription.blockedAt
+      ? new Date(subscription.lastPaymentFailedAt.getTime() + env.billing.paymentGracePeriodDays * 24 * 60 * 60 * 1000)
+      : null;
 
   return {
     id: user.id,
@@ -72,8 +79,10 @@ async function toPublicUser(user: {
     organizationName: user.organizationName,
     createdAt: user.createdAt,
     organizationRole: user.membership?.role ?? null,
-    subscriptionStatus,
-    hasActiveSubscription: hasActiveAccess(subscriptionStatus ? { status: subscriptionStatus } : null),
+    subscriptionStatus: subscription?.status ?? null,
+    hasActiveSubscription: hasActiveAccess(subscription),
+    subscriptionBlocked: !!subscription?.blockedAt,
+    paymentGraceDeadline,
   };
 }
 
