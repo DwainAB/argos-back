@@ -13,7 +13,10 @@ function loadGithubPrivateKey(): string {
 
 export const env = {
   port: Number(process.env.PORT ?? 4000),
-  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
+  // Slash final retiré si présent : une origine CORS comme "https://example.com/" ne
+  // correspond jamais exactement à l'Origin "https://example.com" envoyé par le navigateur
+  // (voir cors() dans app.ts), ce qui a déjà bloqué toute requête cross-origin en production.
+  frontendUrl: (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/+$/, ""),
   databaseUrl: process.env.DATABASE_URL ?? "",
   auth: {
     jwtSecret: process.env.JWT_SECRET ?? "dev-secret-a-ne-jamais-utiliser-en-production",
