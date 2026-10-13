@@ -6,6 +6,7 @@ import {
   login,
   loginWithGoogle,
   loginWithGitlab,
+  loginWithGithub,
   requestPasswordReset,
   resetPassword,
   signAuthToken,
@@ -238,6 +239,36 @@ authRouter.post("/api/auth/gitlab", async (req, res) => {
     }
     console.error("Erreur lors de la connexion GitLab :", err);
     res.status(500).json({ error: "Impossible de vous connecter avec GitLab." });
+  }
+});
+
+// Même mécanique que /api/auth/gitlab ci-dessus : githubUserId/githubUserEmail viennent de la
+// popup OAuth (voir github-login.route.ts callback), déjà vérifiés côté serveur lors de
+// l'échange du code.
+authRouter.post("/api/auth/github", async (req, res) => {
+  try {
+    const { githubUserId, githubUserEmail } = req.body ?? {};
+
+    if (!githubUserId) {
+      return res.status(400).json({ error: "githubUserId requis." });
+    }
+
+    const user = await loginWithGithub({ githubId: Number(githubUserId), email: githubUserEmail ?? null });
+
+    const token = signAuthToken(user.id);
+    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+
+    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
+      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+    );
+
+    res.json({ user: await toPublicUser(user) });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error("Erreur lors de la connexion GitHub :", err);
+    res.status(500).json({ error: "Impossible de vous connecter avec GitHub." });
   }
 });
 

@@ -41,6 +41,13 @@ export const env = {
     clientSecret: process.env.GITHUB_APP_CLIENT_SECRET ?? "",
     slug: process.env.GITHUB_APP_SLUG ?? "",
     redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
+    // Callback distinct de redirectUri ci-dessus : celui-ci sert au flow "se connecter avec
+    // GitHub" (OAuth user-to-server, voir github-oauth.service.ts), l'autre au flow
+    // d'installation de la GitHub App sur un dépôt — deux réponses différentes de GitHub,
+    // donc deux routes de callback, à déclarer séparément dans les paramètres de la GitHub
+    // App (github.com/settings/apps/<slug> > Identifying and authorizing users > Callback URL).
+    loginRedirectUri:
+      process.env.GITHUB_APP_LOGIN_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github-login/callback",
     privateKey: loadGithubPrivateKey(),
   },
   // Application OAuth2 GitLab (gitlab.com > Edit profile > Applications, ou au niveau d'un
