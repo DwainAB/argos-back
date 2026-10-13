@@ -27,10 +27,17 @@ export const authRouter = Router();
 
 const SESSION_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
+// Frontend (ai-argos.com) et backend (up.railway.app) sont deux domaines distincts, pas des
+// sous-domaines d'un même site : le cookie de session traverse donc une frontière cross-site
+// à chaque requête fetch. SameSite=Lax (le défaut) y est systématiquement bloqué par le
+// navigateur, credentials:"include" ou pas côté client — d'où le 401 permanent malgré une
+// connexion apparemment réussie. SameSite=None exige Secure (HTTPS), donc jamais en local.
+const IS_CROSS_SITE_DEPLOYMENT = process.env.NODE_ENV === "production";
+
 const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
+  secure: IS_CROSS_SITE_DEPLOYMENT,
+  sameSite: (IS_CROSS_SITE_DEPLOYMENT ? "none" : "lax") as "none" | "lax",
   maxAge: SESSION_COOKIE_MAX_AGE,
 };
 
@@ -127,7 +134,10 @@ authRouter.post("/api/auth/login", async (req, res) => {
 });
 
 authRouter.post("/api/auth/logout", (_req, res) => {
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
+  // clearCookie doit recevoir les mêmes attributs secure/sameSite que ceux posés à la
+  // création : un mismatch (ex: sameSite différent) fait que le navigateur ne reconnaît pas
+  // le cookie à effacer et le laisse en place.
+  res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: SESSION_COOKIE_OPTIONS.secure, sameSite: SESSION_COOKIE_OPTIONS.sameSite });
   res.status(204).end();
 });
 
