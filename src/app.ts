@@ -13,6 +13,7 @@ import { logsRouter } from "./routes/logs.route";
 import { alertsRouter } from "./routes/alerts.route";
 import { codeAnalysisRouter } from "./routes/code-analysis.route";
 import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
+import { githubLoginRouter } from "./routes/github-login.route";
 import { gitlabPublicRouter, gitlabIntegrationRouter } from "./routes/gitlab-integration.route";
 import { gitlabConnectionsRouter } from "./routes/gitlab-connections.route";
 import { projectSharesRouter } from "./routes/project-shares.route";
@@ -40,6 +41,7 @@ export function createApp() {
   app.use(authRouter);
 
   app.use(githubPublicRouter);
+  app.use(githubLoginRouter);
   app.use(gitlabPublicRouter);
 
   app.use(authMiddleware);

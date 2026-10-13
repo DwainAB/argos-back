@@ -27,6 +27,12 @@ model User {
   // à associer un dépôt de code à un projet.
   gitlabId Int? @unique
 
+  // Identifiant GitHub (id numérique du compte), même principe que gitlabId ci-dessus — voir
+  // loginWithGithub (auth.service.ts). Distinct de githubInstallationId (sur Project) : ce
+  // champ sert uniquement à la connexion à Argos AI elle-même, jamais à l'installation de la
+  // GitHub App sur un dépôt.
+  githubId Int? @unique
+
   accountType      String  @default("personal")
   organizationName String?
 

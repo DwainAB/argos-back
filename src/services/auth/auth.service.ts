@@ -354,3 +354,37 @@ export async function loginWithGitlab(profile: { gitlabId: number; email: string
     include: { membership: true },
   });
 }
+
+// Même politique que loginWithGitlab ci-dessus : ne crée jamais de compte, se contente de
+// lier/reconnaître un compte déjà inscrit par email/mot de passe. email peut être absent si
+// l'utilisateur n'a aucune adresse vérifiée exposée par l'API GitHub (/user/emails) — dans ce
+// cas, seule la reconnaissance par githubId déjà lié fonctionne, la première liaison échoue
+// proprement plutôt que de deviner un compte.
+export async function loginWithGithub(profile: { githubId: number; email: string | null }) {
+  const existingByGithubId = await prisma.user.findUnique({
+    where: { githubId: profile.githubId },
+    include: { membership: true },
+  });
+  if (existingByGithubId) {
+    return existingByGithubId;
+  }
+
+  if (!profile.email) {
+    throw new AuthError(
+      "Votre compte GitHub n'expose aucune adresse email vérifiée. Ajoutez-en une sur github.com/settings/emails, puis réessayez.",
+      400
+    );
+  }
+
+  const normalizedEmail = profile.email.trim().toLowerCase();
+  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  if (!existingByEmail) {
+    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
+  }
+
+  return prisma.user.update({
+    where: { id: existingByEmail.id },
+    data: { githubId: profile.githubId },
+    include: { membership: true },
+  });
+}
