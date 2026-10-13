@@ -59,7 +59,10 @@ export async function fetchGithubProfile(accessToken: string): Promise<GithubPro
     const emailsResponse = await fetch("https://api.github.com/user/emails", { headers });
     if (emailsResponse.ok) {
       const emails = (await emailsResponse.json()) as { email: string; primary: boolean; verified: boolean }[];
-      email = emails.find((e) => e.primary && e.verified)?.email ?? null;
+      console.log(`GitHub /user/emails pour ${user.login} :`, JSON.stringify(emails));
+      email = emails.find((e) => e.primary && e.verified)?.email ?? emails.find((e) => e.verified)?.email ?? null;
+    } else {
+      console.error(`Échec de GitHub /user/emails pour ${user.login} : ${emailsResponse.status} ${await emailsResponse.text()}`);
     }
   }
 
