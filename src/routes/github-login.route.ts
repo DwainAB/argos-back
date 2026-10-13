@@ -39,7 +39,7 @@ githubLoginRouter.get("/api/integrations/github-login/callback", async (req, res
   const { code, state, error } = req.query;
 
   const expectedState = req.cookies?.[STATE_COOKIE];
-  res.clearCookie(STATE_COOKIE, STATE_COOKIE_OPTIONS);
+  res.clearCookie(STATE_COOKIE, { httpOnly: STATE_COOKIE_OPTIONS.httpOnly, secure: STATE_COOKIE_OPTIONS.secure, sameSite: STATE_COOKIE_OPTIONS.sameSite });
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
 
