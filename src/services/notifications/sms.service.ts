@@ -29,8 +29,11 @@ async function send(params: { to: string; body: string }) {
 }
 
 function greeting(now: Date): "Bonjour" | "Bonsoir" {
+  // Intl.DateTimeFormat("fr-FR") peut renvoyer l'heure suffixée ("10 h") selon la version
+  // d'ICU — Number() sur cette chaîne donne alors NaN. On utilise la locale "en" pour obtenir
+  // une chaîne purement numérique, fiable quelle que soit la version de Node.
   const hour = Number(
-    new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", hour: "numeric", hourCycle: "h23" }).format(now)
+    new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", hour: "numeric", hourCycle: "h23" }).format(now)
   );
   return hour < 12 ? "Bonjour" : "Bonsoir";
 }
