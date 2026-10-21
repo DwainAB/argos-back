@@ -3,18 +3,21 @@ import { prismaMock, resetPrismaMock } from "../test/prisma-mock";
 import { getRouteHandler, makeRes } from "../test/route-helpers";
 
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("../services/billing/subscription.service", async () => {
-  const actual = await vi.importActual<typeof import("../services/billing/subscription.service")>(
-    "../services/billing/subscription.service",
-  );
-  return {
-    ...actual,
-    createBillingPortalSession: vi.fn(),
-    createCheckoutSession: vi.fn(),
-    getOrCreateSubscriptionForRequestingUser: vi.fn(),
-    getSubscriptionForRequestingUser: vi.fn(),
-  };
-});
+vi.mock("../services/billing/subscription.service", () => ({
+  QUOTAS: { solo: { sms: 10, fixes: 5, codeAnalyses: 5 }, business: { sms: 60, fixes: 30, codeAnalyses: 5 } },
+  SubscriptionError: class SubscriptionError extends Error {
+    constructor(
+      message: string,
+      public statusCode: number,
+    ) {
+      super(message);
+    }
+  },
+  createBillingPortalSession: vi.fn(),
+  createCheckoutSession: vi.fn(),
+  getOrCreateSubscriptionForRequestingUser: vi.fn(),
+  getSubscriptionForRequestingUser: vi.fn(),
+}));
 
 import { subscriptionRouter } from "./subscription.route";
 import {
