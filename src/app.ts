@@ -1,6 +1,9 @@
+import path from "node:path";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import swaggerUi from "swagger-ui-express";
+import YAML from "yamljs";
 import { env } from "./config/env";
 import { healthRouter } from "./routes/health.route";
 import { authRouter } from "./routes/auth.route";
@@ -37,6 +40,12 @@ export function createApp() {
   app.use(cookieParser());
 
   app.use(healthRouter);
+
+  // Documentation interactive de l'API (OpenAPI), générée à partir d'openapi.yaml —
+  // décrit les endpoints par groupe (auth, projets, logs, alertes, billing, intégrations),
+  // sans middleware d'authentification : accessible publiquement, comme la doc d'une API.
+  const openapiDocument = YAML.load(path.join(__dirname, "..", "openapi.yaml"));
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
   app.use(authRouter);
 

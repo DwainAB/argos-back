@@ -1,0 +1,1093 @@
+openapi: 3.0.3
+info:
+  title: Argos AI API
+  description: >
+    API du backend Argos AI : connecte les projets GitHub/GitLab et les services
+    d'hébergement (Railway, Render) d'un utilisateur, collecte leurs logs, détecte les
+    erreurs via IA et propose des corrections.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000
+    description: Développement local
+  - url: https://api.ai-argos.com
+    description: Production
+
+tags:
+  - name: Auth
+    description: Inscription, connexion, gestion du compte
+  - name: Projects
+    description: Création et gestion des projets surveillés
+  - name: Logs
+    description: Consultation et explication des logs collectés
+  - name: Alerts
+    description: Alertes détectées par l'IA et correctifs proposés
+  - name: Code Analysis
+    description: Analyse complète d'un dépôt par l'IA (sécurité, performance, architecture)
+  - name: Organization
+    description: Gestion des membres et invitations d'une organisation
+  - name: Subscription
+    description: Abonnement, facturation et changement de plan (Stripe)
+  - name: Integrations
+    description: Connexion des dépôts GitHub/GitLab et services Railway/Render
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: argos_session
+      description: Cookie de session JWT posé après connexion (httpOnly).
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Authentification requise.
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        accountType:
+          type: string
+          enum: [personal, organization]
+        hasActiveSubscription:
+          type: boolean
+        subscriptionStatus:
+          type: string
+          nullable: true
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        githubRepo:
+          type: string
+          nullable: true
+        gitlabRepo:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        level:
+          type: string
+        rawMessage:
+          type: string
+        category:
+          type: string
+          enum: [critical, warning, info]
+        createdAt:
+          type: string
+          format: date-time
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [open, fix_proposed, fix_accepted, fix_rejected]
+        explanation:
+          type: string
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+  responses:
+    Unauthorized:
+      description: Authentification requise (cookie de session absent ou invalide).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Ressource introuvable ou non accessible à l'utilisateur courant.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  parameters:
+    projectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+    alertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        type: string
+
+security:
+  - sessionCookie: []
+
+paths:
+  /health:
+    get:
+      tags: [Auth]
+      summary: Vérifie que l'API est en ligne
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Crée un nouveau compte
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, firstName, lastName]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                firstName:
+                  type: string
+                lastName:
+                  type: string
+      responses:
+        "201":
+          description: Compte créé, cookie de session posé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "409":
+          description: Email déjà utilisé
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Connecte un utilisateur par email/mot de passe
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Connexion réussie, cookie de session posé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Identifiants invalides
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnecte l'utilisateur courant (efface le cookie de session)
+      responses:
+        "204":
+          description: Déconnecté
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Renvoie l'utilisateur actuellement connecté
+      responses:
+        "200":
+          description: Utilisateur courant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Auth]
+      summary: Met à jour le numéro de téléphone de l'utilisateur courant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+      responses:
+        "200":
+          description: Utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/User"
+
+  /api/auth/password:
+    patch:
+      tags: [Auth]
+      summary: Change le mot de passe de l'utilisateur courant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Mot de passe mis à jour
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Envoie un email de réinitialisation de mot de passe (si le compte existe)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Toujours 200, même si l'email n'existe pas (anti-énumération de comptes)
+
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Réinitialise le mot de passe à partir du token reçu par email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Mot de passe réinitialisé
+
+  /api/projects:
+    get:
+      tags: [Projects]
+      summary: Liste les projets accessibles à l'utilisateur courant
+      responses:
+        "200":
+          description: Liste des projets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Project"
+    post:
+      tags: [Projects]
+      summary: Crée un nouveau projet (Railway ou Render requis)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectName:
+                  type: string
+                railway:
+                  type: object
+                  properties:
+                    projectToken:
+                      type: string
+                    serviceId:
+                      type: string
+                    environmentId:
+                      type: string
+                render:
+                  type: object
+                  properties:
+                    apiKeyId:
+                      type: string
+                    newApiKey:
+                      type: string
+                    ownerId:
+                      type: string
+                    resourceId:
+                      type: string
+      responses:
+        "200":
+          description: Projet créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  project:
+                    $ref: "#/components/schemas/Project"
+        "400":
+          description: Hébergeur manquant ou invalide
+        "422":
+          description: Limite de projets atteinte (plan Solo)
+
+  /api/projects/{projectId}:
+    patch:
+      tags: [Projects]
+      summary: Renomme un projet
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        "200":
+          description: Projet mis à jour
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Projects]
+      summary: Supprime un projet (et tout son historique)
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "204":
+          description: Projet supprimé
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/projects/{projectId}/logs:
+    get:
+      tags: [Logs]
+      summary: Liste les logs d'un projet (les plus récents en premier)
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Logs du projet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LogEntry"
+
+  /api/projects/{projectId}/overview:
+    get:
+      tags: [Logs]
+      summary: Résumé d'un projet (dernier déploiement, compteurs d'erreurs/avertissements 24h)
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: Aperçu du projet
+
+  /api/projects/{projectId}/timeseries:
+    get:
+      tags: [Logs]
+      summary: Série temporelle des erreurs/avertissements (pour les graphiques)
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: ["24h", "7d", "30d"]
+            default: "24h"
+      responses:
+        "200":
+          description: Points de la série temporelle
+
+  /api/logs/{logEntryId}/explain:
+    post:
+      tags: [Logs]
+      summary: Demande à l'IA d'expliquer un log en langage clair (réponse en streaming)
+      parameters:
+        - name: logEntryId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Explication du log (texte en streaming, ou cache si déjà générée)
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/projects/alerts-summary:
+    get:
+      tags: [Alerts]
+      summary: Nombre d'erreurs/avertissements (24h) par projet accessible
+      responses:
+        "200":
+          description: Résumé par projet
+
+  /api/projects/{projectId}/alerts:
+    get:
+      tags: [Alerts]
+      summary: Liste les alertes d'un projet
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+        - name: resolved
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alertes du projet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Alert"
+                  total:
+                    type: integer
+
+  /api/alerts/{alertId}:
+    get:
+      tags: [Alerts]
+      summary: Détail d'une alerte
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Alerte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alert:
+                    $ref: "#/components/schemas/Alert"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/alerts/{alertId}/resolve:
+    post:
+      tags: [Alerts]
+      summary: Marque une alerte comme traitée
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Alerte résolue
+
+  /api/alerts/{alertId}/reopen:
+    post:
+      tags: [Alerts]
+      summary: Rouvre une alerte précédemment résolue
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Alerte rouverte
+
+  /api/alerts/{alertId}/fix/request:
+    post:
+      tags: [Alerts]
+      summary: Demande à l'IA de proposer un correctif de code pour cette alerte
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Correctif proposé
+        "422":
+          description: Pas de correctif possible dans le code, ou pas de dépôt connecté
+        "429":
+          description: Quota mensuel de corrections IA atteint
+
+  /api/alerts/{alertId}/fix/accept:
+    post:
+      tags: [Alerts]
+      summary: Accepte le correctif proposé (ouvre une pull request)
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commitMessage:
+                  type: string
+      responses:
+        "200":
+          description: Pull request créée
+
+  /api/alerts/{alertId}/fix/reject:
+    post:
+      tags: [Alerts]
+      summary: Rejette le correctif proposé
+      parameters:
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Correctif rejeté
+
+  /api/projects/{projectId}/code-analysis/estimate:
+    get:
+      tags: [Code Analysis]
+      summary: Estime le coût (durée) d'une analyse complète du dépôt
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: Estimation (nombre de fichiers, secondes)
+
+  /api/projects/{projectId}/code-analysis:
+    get:
+      tags: [Code Analysis]
+      summary: Historique des analyses de code du projet
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: Liste des analyses
+    post:
+      tags: [Code Analysis]
+      summary: Lance une analyse complète du dépôt par l'IA (sécurité, performance, architecture)
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "202":
+          description: Analyse démarrée (en arrière-plan)
+        "429":
+          description: Quota mensuel d'analyses atteint
+
+  /api/code-analysis/{analysisId}:
+    get:
+      tags: [Code Analysis]
+      summary: Détail d'une analyse de code
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analyse
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/code-analysis/{analysisId}/findings/{findingId}:
+    patch:
+      tags: [Code Analysis]
+      summary: Change le statut d'un problème détecté (open/resolved/ignored)
+      parameters:
+        - name: analysisId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: findingId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [open, resolved, ignored]
+      responses:
+        "200":
+          description: Problème mis à jour
+
+  /api/organizations/me:
+    get:
+      tags: [Organization]
+      summary: Détail de l'organisation de l'utilisateur courant (membres, invitations, projets)
+      responses:
+        "200":
+          description: Organisation
+
+  /api/organizations/members:
+    post:
+      tags: [Organization]
+      summary: Ajoute un membre (ou l'invite par email s'il n'a pas encore de compte)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, user]
+                  default: user
+      responses:
+        "201":
+          description: Membre ajouté ou invitation créée
+
+  /api/organizations/members/{memberUserId}:
+    delete:
+      tags: [Organization]
+      summary: Retire un membre de l'organisation
+      parameters:
+        - name: memberUserId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Membre retiré
+    patch:
+      tags: [Organization]
+      summary: Change le rôle d'un membre
+      parameters:
+        - name: memberUserId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [admin, user]
+      responses:
+        "200":
+          description: Rôle mis à jour
+
+  /api/organizations/invitations/{invitationId}:
+    delete:
+      tags: [Organization]
+      summary: Annule une invitation en attente
+      parameters:
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Invitation annulée
+
+  /api/subscription/me:
+    get:
+      tags: [Subscription]
+      summary: Détail de l'abonnement courant (plan, statut, quotas utilisés)
+      responses:
+        "200":
+          description: Abonnement
+        "404":
+          description: Aucun abonnement trouvé
+
+  /api/subscription/checkout:
+    post:
+      tags: [Subscription]
+      summary: Crée une session de paiement Stripe Checkout
+      responses:
+        "200":
+          description: URL de la session Checkout
+
+  /api/subscription/portal:
+    post:
+      tags: [Subscription]
+      summary: Crée une session du portail de facturation Stripe
+      responses:
+        "200":
+          description: URL du portail de facturation
+
+  /api/subscription/preview-plan-change:
+    get:
+      tags: [Subscription]
+      summary: Calcule le montant exact d'un changement de plan, sans rien facturer
+      parameters:
+        - name: plan
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [solo, business]
+      responses:
+        "200":
+          description: Montant dû (ou crédit)
+
+  /api/subscription/downgrade-preview:
+    get:
+      tags: [Subscription]
+      summary: Aperçu des conséquences d'un downgrade Business → Solo
+      responses:
+        "200":
+          description: Aperçu (membres, projets à sélectionner si besoin)
+
+  /api/subscription/upgrade-to-business:
+    post:
+      tags: [Subscription]
+      summary: Passe du plan Solo au plan Business (crée l'organisation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationName]
+              properties:
+                organizationName:
+                  type: string
+      responses:
+        "200":
+          description: URL du portail de confirmation Stripe
+
+  /api/subscription/downgrade-to-solo:
+    post:
+      tags: [Subscription]
+      summary: Programme un downgrade Business → Solo en fin de période
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                keepProjectIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Date d'effet du changement
+
+  /api/stripe/webhook:
+    post:
+      tags: [Subscription]
+      summary: Webhook Stripe (évènements de facturation) — appelé par Stripe, pas par le frontend
+      security: []
+      responses:
+        "200":
+          description: Évènement traité
+
+  /api/integrations/github/start:
+    get:
+      tags: [Integrations]
+      summary: Démarre le flux d'installation de la GitHub App (redirection)
+      security: []
+      responses:
+        "302":
+          description: Redirection vers GitHub
+
+  /api/integrations/github/installations:
+    get:
+      tags: [Integrations]
+      summary: Liste les installations GitHub App accessibles
+      responses:
+        "200":
+          description: Installations
+
+  /api/integrations/github/repos:
+    get:
+      tags: [Integrations]
+      summary: Liste les dépôts d'une installation GitHub App
+      parameters:
+        - name: installationId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Dépôts
+
+  /api/integrations/github/branches:
+    get:
+      tags: [Integrations]
+      summary: Liste les branches d'un dépôt GitHub
+      parameters:
+        - name: installationId
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: owner
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: repo
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Branches
+
+  /api/projects/{projectId}/github:
+    post:
+      tags: [Integrations]
+      summary: Associe un dépôt GitHub à un projet
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, repoFullName, branch]
+              properties:
+                installationId:
+                  type: integer
+                repoFullName:
+                  type: string
+                branch:
+                  type: string
+      responses:
+        "200":
+          description: Dépôt associé
+
+  /api/integrations/gitlab/start:
+    get:
+      tags: [Integrations]
+      summary: Démarre le flux OAuth2 GitLab (redirection)
+      security: []
+      responses:
+        "302":
+          description: Redirection vers GitLab
+
+  /api/integrations/gitlab/projects:
+    get:
+      tags: [Integrations]
+      summary: Liste les projets GitLab accessibles via une connexion
+      parameters:
+        - name: connectionId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Projets GitLab
+
+  /api/integrations/gitlab/branches:
+    get:
+      tags: [Integrations]
+      summary: Liste les branches d'un projet GitLab
+      parameters:
+        - name: connectionId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: gitlabProjectId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Branches
+
+  /api/projects/{projectId}/gitlab:
+    post:
+      tags: [Integrations]
+      summary: Associe un dépôt GitLab à un projet
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [connectionId, gitlabProjectId, repoFullPath, branch]
+              properties:
+                connectionId:
+                  type: string
+                gitlabProjectId:
+                  type: integer
+                repoFullPath:
+                  type: string
+                branch:
+                  type: string
+      responses:
+        "200":
+          description: Dépôt associé
+
+  /api/integrations/render/services:
+    get:
+      tags: [Integrations]
+      summary: Liste les services Render accessibles avec une clé API
+      parameters:
+        - name: apiKey
+          in: query
+          schema:
+            type: string
+        - name: apiKeyId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Services Render
+
+  /api/render-api-keys:
+    get:
+      tags: [Integrations]
+      summary: Liste les clés API Render enregistrées
+      responses:
+        "200":
+          description: Clés API (jamais en clair)
+    post:
+      tags: [Integrations]
+      summary: Enregistre une nouvelle clé API Render (chiffrée en base)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [apiKey]
+              properties:
+                apiKey:
+                  type: string
+                label:
+                  type: string
+      responses:
+        "201":
+          description: Clé enregistrée
+
+  /api/render-api-keys/{keyId}:
+    delete:
+      tags: [Integrations]
+      summary: Supprime une clé API Render (si plus utilisée par aucun projet)
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Clé supprimée
+        "409":
+          description: Clé encore utilisée par des projets
