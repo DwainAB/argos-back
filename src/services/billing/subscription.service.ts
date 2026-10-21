@@ -3,6 +3,7 @@ import { prisma } from "../../lib/prisma";
 import { env } from "../../config/env";
 import { sendPaymentFailedEmail, sendUsageLimitReachedEmail, sendUsageLimitWarningEmail } from "../notifications/email.service";
 import { startAllLogStreamsForSubscription, stopAllLogStreamsForSubscription } from "./log-stream-control.service";
+import { logger } from "../../lib/logger";
 
 const stripe = env.stripe.secretKey ? new Stripe(env.stripe.secretKey) : null;
 
@@ -93,7 +94,7 @@ export async function createPendingSubscription(input: {
     // Prisma — celle qui perd doit supprimer son client Stripe devenu orphelin, sous peine de
     // le laisser traîner indéfiniment sans jamais être rattaché à un abonnement.
     await client.customers.del(customer.id).catch((deleteErr) =>
-      console.error(`Impossible de supprimer le client Stripe orphelin ${customer.id} :`, deleteErr),
+      logger.error({ err: deleteErr }, `Impossible de supprimer le client Stripe orphelin ${customer.id} :`),
     );
     throw err;
   }
@@ -187,8 +188,9 @@ async function requireStripeSubscriptionItem(
   const stripeSubscription = await client.subscriptions.retrieve(subscription.stripeSubscriptionId);
 
   if (stripeSubscription.status !== subscription.status) {
-    console.error(
-      `Statut désynchronisé pour l'abonnement ${subscription.id} : base="${subscription.status}", Stripe="${stripeSubscription.status}" — correction.`,
+    logger.error(
+      { subscriptionId: subscription.id, dbStatus: subscription.status, stripeStatus: stripeSubscription.status },
+      "Statut désynchronisé pour l'abonnement — correction",
     );
     await prisma.subscription.update({ where: { id: subscription.id }, data: { status: stripeSubscription.status } });
   }
@@ -218,7 +220,7 @@ async function voidStaleOpenInvoices(client: Stripe, stripeSubscriptionId: strin
   const openInvoices = await client.invoices.list({ subscription: stripeSubscriptionId, status: "open" });
   for (const invoice of openInvoices.data) {
     await client.invoices.voidInvoice(invoice.id).catch((err) =>
-      console.error(`Impossible d'annuler la facture de proration précédente ${invoice.id} :`, err),
+      logger.error({ err }, `Impossible d'annuler la facture de proration précédente ${invoice.id} :`),
     );
   }
 }
@@ -553,7 +555,7 @@ async function syncPlanFromStripeSubscription(subscription: { id: string; plan: 
 export async function handleStripeWebhookEvent(event: Stripe.Event) {
   const alreadyProcessed = await prisma.stripeEvent.findUnique({ where: { id: event.id } });
   if (alreadyProcessed) {
-    console.error(`Événement Stripe ${event.id} (${event.type}) déjà traité — ignoré.`);
+    logger.error(`Événement Stripe ${event.id} (${event.type}) déjà traité — ignoré.`);
     return;
   }
 
@@ -700,7 +702,7 @@ async function processStripeWebhookEvent(event: Stripe.Event) {
 
       if (recipient) {
         await sendPaymentFailedEmail({ to: recipient.email, firstName: recipient.firstName }).catch((err) =>
-          console.error(`Erreur lors de l'envoi de l'email d'échec de paiement pour l'abonnement ${subscription.id} :`, err),
+          logger.error({ err }, `Erreur lors de l'envoi de l'email d'échec de paiement pour l'abonnement ${subscription.id} :`),
         );
       }
       return;

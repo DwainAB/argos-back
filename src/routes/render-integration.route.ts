@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { fetchAccessibleServices } from "../services/providers/render/render-api.service";
 import { getDecryptedRenderApiKey, RenderApiKeyError } from "../services/providers/render/render-api-key.service";
+import { logger } from "../lib/logger";
 
 export const renderIntegrationRouter = Router();
 
@@ -24,7 +25,7 @@ renderIntegrationRouter.get("/api/integrations/render/services", async (req, res
     if (err instanceof RenderApiKeyError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la récupération des services Render :", err);
+    logger.error({ err }, "Erreur lors de la récupération des services Render :");
     res.status(502).json({ error: "Impossible de récupérer les services Render. Vérifiez la clé API." });
   }
 });

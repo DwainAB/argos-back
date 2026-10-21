@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../config/env", () => ({ env: { smsfactor: { apiToken: "test-token" } } }));
 
 import { env } from "../../config/env";
+import { logger } from "../../lib/logger";
 import { sendAlertSms } from "./sms.service";
 
 const fetchMock = vi.fn();
@@ -21,7 +22,7 @@ afterEach(() => {
 describe("sendAlertSms", () => {
   it("n'appelle pas l'API et logge une erreur si le token SMSFactor n'est pas configuré", async () => {
     (env as { smsfactor: { apiToken: string } }).smsfactor.apiToken = "";
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     await sendAlertSms({ to: "+33600000000", projectName: "Mon projet", severityScore: 8 });
 
@@ -57,7 +58,7 @@ describe("sendAlertSms", () => {
 
   it("logge une erreur si SMSFactor renvoie un statut d'échec, sans lever d'exception", async () => {
     fetchMock.mockResolvedValue({ json: async () => ({ status: 0, message: "Crédit insuffisant" }) });
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     await expect(
       sendAlertSms({ to: "+33600000000", projectName: "Mon projet", severityScore: 5 })

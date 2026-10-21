@@ -2,6 +2,7 @@ import { createClient, type Client } from "graphql-ws";
 import WebSocket from "ws";
 import { processIncomingLog } from "../../logs/log-grouper.service";
 import { persistGroupedLog } from "../../logs/log-ingestion.service";
+import { logger } from "../../../lib/logger";
 
 const RAILWAY_WS_URL = "wss://backboard.railway.com/graphql/v2";
 const RAILWAY_API_URL = "https://backboard.railway.com/graphql/v2";
@@ -54,7 +55,7 @@ async function fetchLatestDeploymentId(
   };
 
   if (!response.ok || json.errors || !json.data) {
-    console.error("Impossible de récupérer le dernier déploiement :", json.errors ?? json);
+    logger.error({ errors: json.errors ?? json }, "Impossible de récupérer le dernier déploiement");
     return null;
   }
 
@@ -77,7 +78,7 @@ export async function startLogStreamForProject(project: {
   });
 
   if (!deploymentId) {
-    console.error(`Projet ${project.id} : aucun déploiement actif trouvé, streaming non démarré.`);
+    logger.error(`Projet ${project.id} : aucun déploiement actif trouvé, streaming non démarré.`);
     return;
   }
 
@@ -95,8 +96,8 @@ export async function startLogStreamForProject(project: {
     lazy: false,
     retryAttempts: Infinity,
     on: {
-      error: (err) => console.error(`Streaming Railway (projet ${project.id}) — erreur :`, err),
-      closed: () => console.log(`Streaming Railway (projet ${project.id}) — connexion fermée.`),
+      error: (err) => logger.error({ err }, `Streaming Railway (projet ${project.id}) — erreur :`),
+      closed: () => logger.info(`Streaming Railway (projet ${project.id}) — connexion fermée.`),
     },
   });
 
@@ -116,18 +117,18 @@ export async function startLogStreamForProject(project: {
         for (const log of logs) {
           processIncomingLog(project.id, log, (groupedLog) => {
             persistGroupedLog(project.id, "railway", groupedLog).catch((err) =>
-              console.error(`Erreur d'enregistrement d'un log (projet ${project.id}) :`, err)
+              logger.error({ err }, `Erreur d'enregistrement d'un log (projet ${project.id}) :`)
             );
           });
         }
       },
-      error: (err) => console.error(`Streaming Railway (projet ${project.id}) — erreur de subscription :`, err),
-      complete: () => console.log(`Streaming Railway (projet ${project.id}) — subscription terminée.`),
+      error: (err) => logger.error({ err }, `Streaming Railway (projet ${project.id}) — erreur de subscription :`),
+      complete: () => logger.info(`Streaming Railway (projet ${project.id}) — subscription terminée.`),
     }
   );
 
   activeClients.set(project.id, client);
-  console.log(`Streaming Railway démarré pour le projet ${project.id} (déploiement ${deploymentId}).`);
+  logger.info(`Streaming Railway démarré pour le projet ${project.id} (déploiement ${deploymentId}).`);
 }
 
 export function stopLogStreamForProject(projectId: string) {

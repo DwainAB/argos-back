@@ -7,6 +7,7 @@ import { explainLog } from "../services/logs/log-explanation.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const logsRouter = Router();
 
@@ -37,7 +38,7 @@ logsRouter.post("/api/logs/:logEntryId/explain", async (req, res) => {
 
     res.end();
   } catch (err) {
-    console.error(`Erreur lors de l'explication du log ${logEntryId} :`, err);
+    logger.error({ err }, `Erreur lors de l'explication du log ${logEntryId} :`);
     if (res.headersSent) {
       res.end();
     } else {
@@ -65,7 +66,7 @@ logsRouter.get("/api/projects/:projectId/logs", async (req, res) => {
 
     res.json({ logs });
   } catch (err) {
-    console.error(`Erreur lors de la récupération des logs du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération des logs du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer les logs." });
   }
 });
@@ -103,12 +104,12 @@ logsRouter.get("/api/projects/:projectId/overview", async (req, res) => {
         });
       }
     } catch (err) {
-      console.error(`Impossible de récupérer le dernier déploiement du projet ${projectId} :`, err);
+      logger.error({ err }, `Impossible de récupérer le dernier déploiement du projet ${projectId} :`);
     }
 
     res.json({ latestDeployment, errorCount, warningCount });
   } catch (err) {
-    console.error(`Erreur lors de la récupération de l'aperçu du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération de l'aperçu du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer l'aperçu du projet." });
   }
 });
@@ -164,7 +165,7 @@ logsRouter.get("/api/projects/:projectId/timeseries", async (req, res) => {
 
     res.json({ range, points });
   } catch (err) {
-    console.error(`Erreur lors de la récupération de la série temporelle du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération de la série temporelle du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer la série temporelle." });
   }
 });
@@ -199,7 +200,7 @@ logsRouter.get("/api/projects", async (req, res) => {
 
     res.json({ projects: projectsWithActors });
   } catch (err) {
-    console.error("Erreur lors de la récupération des projets :", err);
+    logger.error({ err }, "Erreur lors de la récupération des projets :");
     res.status(500).json({ error: "Impossible de récupérer les projets." });
   }
 });
@@ -256,7 +257,7 @@ logsRouter.patch("/api/projects/:projectId", async (req, res) => {
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la mise à jour du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la mise à jour du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de mettre à jour le projet." });
   }
 });
@@ -292,7 +293,7 @@ logsRouter.delete("/api/projects/:projectId", async (req, res) => {
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la suppression du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la suppression du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de supprimer le projet." });
   }
 });

@@ -4,6 +4,7 @@ import { listAppInstallations } from "../services/providers/github/github-app.se
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const githubConnectionsRouter = Router();
 
@@ -42,7 +43,7 @@ githubConnectionsRouter.get("/api/github-connections", async (req, res) => {
 
     res.json({ connections });
   } catch (err) {
-    console.error("Erreur lors de la récupération des connexions GitHub :", err);
+    logger.error({ err }, "Erreur lors de la récupération des connexions GitHub :");
     res.status(502).json({ error: "Impossible de récupérer les connexions GitHub." });
   }
 });
@@ -88,7 +89,7 @@ githubConnectionsRouter.delete("/api/github-connections/:installationId", async 
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la déconnexion GitHub de l'installation ${installationId} :`, err);
+    logger.error({ err }, `Erreur lors de la déconnexion GitHub de l'installation ${installationId} :`);
     res.status(500).json({ error: "Impossible de déconnecter cette installation GitHub." });
   }
 });

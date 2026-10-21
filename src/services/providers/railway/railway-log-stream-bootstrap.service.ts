@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/prisma";
 import { startLogStreamForProject } from "./railway-log-stream.service";
+import { logger } from "../../../lib/logger";
 
 export async function bootstrapRailwayLogStreams() {
   const projects = await prisma.project.findMany({
@@ -31,10 +32,10 @@ export async function bootstrapRailwayLogStreams() {
       railwayProjectToken: project.railwayProjectToken,
       railwayServiceId: project.railwayServiceId,
       railwayEnvironmentId: project.railwayEnvironmentId,
-    }).catch((err) => console.error(`Échec du redémarrage du streaming pour le projet ${project.id} :`, err));
+    }).catch((err) => logger.error({ err }, `Échec du redémarrage du streaming pour le projet ${project.id} :`));
   }
 
   if (projects.length > 0) {
-    console.log(`Streaming Railway relancé pour ${projects.length} projet(s) déjà connecté(s).`);
+    logger.info(`Streaming Railway relancé pour ${projects.length} projet(s) déjà connecté(s).`);
   }
 }

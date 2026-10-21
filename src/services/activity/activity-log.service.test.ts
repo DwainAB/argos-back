@@ -4,6 +4,7 @@ import { prismaMock, resetPrismaMock } from "../../test/prisma-mock";
 vi.mock("../../lib/prisma", () => ({ prisma: prismaMock }));
 
 import { ACTIVITY_ACTIONS, getLastActor, getLastActors, logActivity } from "./activity-log.service";
+import { logger } from "../../lib/logger";
 
 beforeEach(() => {
   resetPrismaMock();
@@ -34,7 +35,7 @@ describe("logActivity", () => {
 
   it("avale l'erreur sans la propager si l'écriture échoue", async () => {
     prismaMock.activityLog.create.mockRejectedValue(new Error("DB down"));
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     await expect(
       logActivity({ userId: "user-1", action: ACTIVITY_ACTIONS.PROJECT_CREATED, entityType: "Project", entityId: "proj-1" }),

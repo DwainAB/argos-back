@@ -6,13 +6,14 @@ import { bootstrapRenderLogStreams } from "./services/providers/render/render-lo
 import { stopAllLogStreams as stopAllRenderLogStreams } from "./services/providers/render/render-log-stream.service";
 import { scheduleLogRetentionJob } from "./jobs/log-retention.job";
 import { scheduleBillingGracePeriodJob } from "./jobs/billing-grace-period.job";
+import { logger } from "./lib/logger";
 
 const app = createApp();
 
 app.listen(env.port, () => {
-  console.log(`Guardian AI backend listening on port ${env.port}`);
-  bootstrapRailwayLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Railway :", err));
-  bootstrapRenderLogStreams().catch((err) => console.error("Échec du bootstrap du streaming Render :", err));
+  logger.info(`Guardian AI backend listening on port ${env.port}`);
+  bootstrapRailwayLogStreams().catch((err) => logger.error({ err }, "Échec du bootstrap du streaming Railway :"));
+  bootstrapRenderLogStreams().catch((err) => logger.error({ err }, "Échec du bootstrap du streaming Render :"));
   scheduleLogRetentionJob();
   scheduleBillingGracePeriodJob();
 });

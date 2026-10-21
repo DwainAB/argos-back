@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { Router } from "express";
 import { env } from "../config/env";
 import { buildGithubAuthorizeUrl, exchangeGithubCodeForToken, fetchGithubProfile } from "../services/auth/github-oauth.service";
+import { logger } from "../lib/logger";
 
 // Même mécanique que la connexion GitLab (gitlab-integration.route.ts) : popup ouverte par
 // le frontend, callback qui referme la popup via postMessage plutôt qu'une redirection pleine
@@ -57,7 +58,7 @@ githubLoginRouter.get("/api/integrations/github-login/callback", async (req, res
 
     res.send(renderPostMessagePage({ githubUserId: profile.id, githubUserEmail: profile.email }));
   } catch (err) {
-    console.error("Erreur lors de l'échange du code OAuth GitHub (login) :", err);
+    logger.error({ err }, "Erreur lors de l'échange du code OAuth GitHub (login) :");
     res.send(renderPostMessagePage({ error: "token_exchange_failed" }));
   }
 });

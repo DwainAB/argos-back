@@ -11,6 +11,7 @@ import {
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const githubPublicRouter = Router();
 export const githubIntegrationRouter = Router();
@@ -70,7 +71,7 @@ githubIntegrationRouter.get("/api/integrations/github/installations", async (_re
     const installations = await listAppInstallations();
     res.json({ installations });
   } catch (err) {
-    console.error("Erreur lors de la récupération des installations GitHub :", err);
+    logger.error({ err }, "Erreur lors de la récupération des installations GitHub :");
     res.status(502).json({ error: "Impossible de récupérer les installations GitHub." });
   }
 });
@@ -86,7 +87,7 @@ githubIntegrationRouter.get("/api/integrations/github/repos", async (req, res) =
     const repos = await listInstallationRepos(installationId);
     res.json({ repos });
   } catch (err) {
-    console.error("Erreur lors de la récupération des repos GitHub :", err);
+    logger.error({ err }, "Erreur lors de la récupération des repos GitHub :");
     res.status(502).json({ error: "Impossible de récupérer les dépôts GitHub." });
   }
 });
@@ -104,7 +105,7 @@ githubIntegrationRouter.get("/api/integrations/github/branches", async (req, res
     const branches = await listRepoBranches(installationId, { owner, repo });
     res.json({ branches });
   } catch (err) {
-    console.error("Erreur lors de la récupération des branches GitHub :", err);
+    logger.error({ err }, "Erreur lors de la récupération des branches GitHub :");
     res.status(502).json({ error: "Impossible de récupérer les branches." });
   }
 });
@@ -149,7 +150,7 @@ githubIntegrationRouter.post("/api/projects/:projectId/github", async (req, res)
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de l'association GitHub du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de l'association GitHub du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible d'associer le dépôt GitHub à ce projet." });
   }
 });

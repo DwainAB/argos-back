@@ -2,6 +2,7 @@ import express, { Router } from "express";
 import Stripe from "stripe";
 import { env } from "../config/env";
 import { handleStripeWebhookEvent } from "../services/billing/subscription.service";
+import { logger } from "../lib/logger";
 
 export const stripeWebhookRouter = Router();
 
@@ -13,7 +14,7 @@ stripeWebhookRouter.post("/api/stripe/webhook", express.raw({ type: "application
   const signature = req.headers["stripe-signature"];
 
   if (!stripe || !env.stripe.webhookSecret || typeof signature !== "string") {
-    console.error("Webhook Stripe reçu mais Stripe n'est pas configuré — ignoré.");
+    logger.error("Webhook Stripe reçu mais Stripe n'est pas configuré — ignoré.");
     return res.status(503).end();
   }
 
@@ -21,7 +22,7 @@ stripeWebhookRouter.post("/api/stripe/webhook", express.raw({ type: "application
   try {
     event = stripe.webhooks.constructEvent(req.body, signature, env.stripe.webhookSecret);
   } catch (err) {
-    console.error("Signature du webhook Stripe invalide :", err);
+    logger.error({ err }, "Signature du webhook Stripe invalide :");
     return res.status(400).json({ error: "Signature invalide." });
   }
 
@@ -29,7 +30,7 @@ stripeWebhookRouter.post("/api/stripe/webhook", express.raw({ type: "application
     await handleStripeWebhookEvent(event);
     res.status(200).end();
   } catch (err) {
-    console.error(`Erreur lors du traitement de l'événement Stripe ${event.type} :`, err);
+    logger.error({ err }, `Erreur lors du traitement de l'événement Stripe ${event.type} :`);
     res.status(500).end();
   }
 });

@@ -5,6 +5,7 @@ import {
   listRenderApiKeys,
   RenderApiKeyError,
 } from "../services/providers/render/render-api-key.service";
+import { logger } from "../lib/logger";
 
 export const renderApiKeysRouter = Router();
 
@@ -13,7 +14,7 @@ renderApiKeysRouter.get("/api/render-api-keys", async (req, res) => {
     const keys = await listRenderApiKeys(req.userId as string);
     res.json({ keys });
   } catch (err) {
-    console.error("Erreur lors de la récupération des clés API Render :", err);
+    logger.error({ err }, "Erreur lors de la récupération des clés API Render :");
     res.status(500).json({ error: "Impossible de récupérer les clés API Render." });
   }
 });
@@ -32,7 +33,7 @@ renderApiKeysRouter.post("/api/render-api-keys", async (req, res) => {
     if (err instanceof RenderApiKeyError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de l'enregistrement de la clé API Render :", err);
+    logger.error({ err }, "Erreur lors de l'enregistrement de la clé API Render :");
     res.status(500).json({ error: "Impossible d'enregistrer cette clé API." });
   }
 });
@@ -47,7 +48,7 @@ renderApiKeysRouter.delete("/api/render-api-keys/:keyId", async (req, res) => {
     if (err instanceof RenderApiKeyError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la suppression de la clé API Render ${keyId} :`, err);
+    logger.error({ err }, `Erreur lors de la suppression de la clé API Render ${keyId} :`);
     res.status(500).json({ error: "Impossible de supprimer cette clé API." });
   }
 });

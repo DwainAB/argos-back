@@ -5,6 +5,7 @@ import { listProjectPhoneRecipients, listProjectRecipients } from "../organizati
 import { sendAlertEmail } from "../notifications/email.service";
 import { sendAlertSms } from "../notifications/sms.service";
 import { getSubscriptionForProject, tryConsumeSmsQuota } from "../billing/subscription.service";
+import { logger } from "../../lib/logger";
 
 // Fenêtre de recherche d'un doublon avant insertion — un fournisseur (Railway, Render) rejoue
 // parfois ses derniers logs à chaque (re)connexion (voir startLogStreamForProject), typiquement
@@ -46,7 +47,7 @@ export async function persistGroupedLog(projectId: string, source: string, log: 
 
   if (needsTriage) {
     triageIncidentIfNeeded(projectId, entry.id, log).catch(async (err) => {
-      console.error(`Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`, err);
+      logger.error({ err }, `Erreur de triage IA du log ${entry.id} (projet ${projectId}) :`);
 
       await prisma.logEntry
         .update({ where: { id: entry.id }, data: { triageStatus: "done" } })
@@ -82,7 +83,7 @@ async function triageIncidentIfNeeded(projectId: string, logEntryId: string, log
     });
 
     notifyProjectRecipients(alert.id, projectId, triage.finalCategory, triage.explanation, triage.severityScore).catch(
-      (err) => console.error(`Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`, err)
+      (err) => logger.error({ err }, `Erreur lors de l'envoi des emails d'alerte pour le projet ${projectId} :`)
     );
   }
 }
@@ -107,7 +108,7 @@ async function notifyProjectRecipients(
 
   const emailNotifications = recipients.map((to) =>
     sendAlertEmail({ to, projectName: project.name, level, explanation }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email d'alerte à ${to} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email d'alerte à ${to} :`)
     )
   );
 
@@ -124,7 +125,7 @@ async function notifyProjectRecipients(
       smsAttempted = true;
       smsNotifications = phoneRecipients.map((to) =>
         sendAlertSms({ to, projectName: project.name, severityScore }).catch((err) =>
-          console.error(`Erreur lors de l'envoi du SMS d'alerte à ${to} :`, err)
+          logger.error({ err }, `Erreur lors de l'envoi du SMS d'alerte à ${to} :`)
         )
       );
     }
@@ -137,5 +138,5 @@ async function notifyProjectRecipients(
       where: { id: alertId },
       data: { emailSent: recipients.length > 0, smsSent: smsAttempted },
     })
-    .catch((err) => console.error(`Erreur lors de la mise à jour du statut de notification de l'alerte ${alertId} :`, err));
+    .catch((err) => logger.error({ err }, `Erreur lors de la mise à jour du statut de notification de l'alerte ${alertId} :`));
 }
