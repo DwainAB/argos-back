@@ -9,6 +9,7 @@ import {
   getOrCreateSubscriptionForRequestingUser,
   getSubscriptionForRequestingUser,
 } from "../services/billing/subscription.service";
+import { logger } from "../lib/logger";
 
 export const subscriptionRouter = Router();
 
@@ -44,7 +45,7 @@ subscriptionRouter.get("/api/subscription/me", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Erreur lors de la récupération de l'abonnement :", err);
+    logger.error({ err }, "Erreur lors de la récupération de l'abonnement :");
     res.status(500).json({ error: "Impossible de récupérer l'abonnement." });
   }
 });
@@ -60,7 +61,7 @@ subscriptionRouter.post("/api/subscription/checkout", async (req, res) => {
     if (err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la création de la session de paiement :", err);
+    logger.error({ err }, "Erreur lors de la création de la session de paiement :");
     res.status(500).json({ error: "Impossible de créer la session de paiement." });
   }
 });
@@ -79,7 +80,7 @@ subscriptionRouter.post("/api/subscription/portal", async (req, res) => {
     if (err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la création de la session du portail de facturation :", err);
+    logger.error({ err }, "Erreur lors de la création de la session du portail de facturation :");
     res.status(500).json({ error: "Impossible d'ouvrir le portail de facturation." });
   }
 });

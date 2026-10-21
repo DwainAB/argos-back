@@ -7,6 +7,7 @@ import {
   removeMember,
   updateMemberRole,
 } from "../services/organization/organization.service";
+import { logger } from "../lib/logger";
 
 export const organizationRouter = Router();
 
@@ -53,7 +54,7 @@ organizationRouter.get("/api/organizations/me", async (req, res) => {
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la récupération de l'organisation :", err);
+    logger.error({ err }, "Erreur lors de la récupération de l'organisation :");
     res.status(500).json({ error: "Impossible de récupérer l'organisation." });
   }
 });
@@ -70,7 +71,7 @@ organizationRouter.post("/api/organizations/members", async (req, res) => {
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de l'ajout d'un membre à l'organisation :", err);
+    logger.error({ err }, "Erreur lors de l'ajout d'un membre à l'organisation :");
     res.status(500).json({ error: "Impossible d'ajouter ce membre." });
   }
 });
@@ -85,7 +86,7 @@ organizationRouter.delete("/api/organizations/members/:memberUserId", async (req
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors du retrait du membre ${memberUserId} :`, err);
+    logger.error({ err }, `Erreur lors du retrait du membre ${memberUserId} :`);
     res.status(500).json({ error: "Impossible de retirer ce membre." });
   }
 });
@@ -104,7 +105,7 @@ organizationRouter.patch("/api/organizations/members/:memberUserId", async (req,
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors du changement de rôle du membre ${memberUserId} :`, err);
+    logger.error({ err }, `Erreur lors du changement de rôle du membre ${memberUserId} :`);
     res.status(500).json({ error: "Impossible de mettre à jour ce rôle." });
   }
 });
@@ -119,7 +120,7 @@ organizationRouter.delete("/api/organizations/invitations/:invitationId", async 
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de l'annulation de l'invitation ${invitationId} :`, err);
+    logger.error({ err }, `Erreur lors de l'annulation de l'invitation ${invitationId} :`);
     res.status(500).json({ error: "Impossible d'annuler cette invitation." });
   }
 });

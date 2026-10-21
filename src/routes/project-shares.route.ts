@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ProjectShareError, listShares, shareProject, unshareProject } from "../services/organization/project-share.service";
+import { logger } from "../lib/logger";
 
 export const projectSharesRouter = Router();
 
@@ -13,7 +14,7 @@ projectSharesRouter.post("/api/projects/:projectId/shares", async (req, res) => 
     if (err instanceof ProjectShareError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors du partage du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors du partage du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de partager ce projet." });
   }
 });
@@ -28,7 +29,7 @@ projectSharesRouter.get("/api/projects/:projectId/shares", async (req, res) => {
     if (err instanceof ProjectShareError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la récupération des partages du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération des partages du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer les partages." });
   }
 });
@@ -43,7 +44,7 @@ projectSharesRouter.delete("/api/projects/:projectId/shares/:shareId", async (re
     if (err instanceof ProjectShareError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la suppression du partage ${shareId} :`, err);
+    logger.error({ err }, `Erreur lors de la suppression du partage ${shareId} :`);
     res.status(500).json({ error: "Impossible de retirer ce partage." });
   }
 });

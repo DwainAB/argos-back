@@ -11,6 +11,7 @@ import {
 import { getMembershipForUser } from "../services/organization/organization.service";
 import { SOLO_PROJECT_LIMIT } from "../services/billing/subscription.service";
 import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const projectsRouter = Router();
 
@@ -137,14 +138,14 @@ projectsRouter.post("/api/projects", async (req, res) => {
         railwayProjectToken: railway.projectToken,
         railwayServiceId: railway.serviceId,
         railwayEnvironmentId: railway.environmentId,
-      }).catch((err) => console.error(`Échec du démarrage du streaming pour le projet ${project.id} :`, err));
+      }).catch((err) => logger.error({ err }, `Échec du démarrage du streaming pour le projet ${project.id} :`));
     } else {
       startRenderLogStreamForProject({
         id: project.id,
         renderApiKey: renderApiKeyPlain as string,
         renderOwnerId: render!.ownerId,
         renderResourceId: render!.resourceId,
-      }).catch((err) => console.error(`Échec du démarrage du streaming pour le projet ${project.id} :`, err));
+      }).catch((err) => logger.error({ err }, `Échec du démarrage du streaming pour le projet ${project.id} :`));
     }
 
     await logActivity({
@@ -161,7 +162,7 @@ projectsRouter.post("/api/projects", async (req, res) => {
     if (err instanceof RenderApiKeyError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la création du projet :", err);
+    logger.error({ err }, "Erreur lors de la création du projet :");
     res.status(502).json({
       error: railway
         ? "Impossible de récupérer les logs. Vérifiez le token, le Service ID et l'Environment ID."

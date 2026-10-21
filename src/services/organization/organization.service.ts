@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { sendOrganizationAddedEmail, sendOrganizationInvitationEmail } from "../notifications/email.service";
+import { logger } from "../../lib/logger";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -114,7 +115,7 @@ export async function addMember(input: { adminUserId: string; email: unknown; ro
       to: normalizedEmail,
       firstName: targetUser.firstName,
       organizationName: organization.name,
-    }).catch((err) => console.error(`Erreur lors de l'envoi de l'email d'ajout à l'organisation à ${normalizedEmail} :`, err));
+    }).catch((err) => logger.error({ err }, `Erreur lors de l'envoi de l'email d'ajout à l'organisation à ${normalizedEmail} :`));
 
     return { type: "member" as const, membership };
   }
@@ -134,7 +135,7 @@ export async function addMember(input: { adminUserId: string; email: unknown; ro
   sendOrganizationInvitationEmail({
     to: normalizedEmail,
     organizationName: organization.name,
-  }).catch((err) => console.error(`Erreur lors de l'envoi de l'email d'invitation à ${normalizedEmail} :`, err));
+  }).catch((err) => logger.error({ err }, `Erreur lors de l'envoi de l'email d'invitation à ${normalizedEmail} :`));
 
   return { type: "invitation" as const, invitation };
 }

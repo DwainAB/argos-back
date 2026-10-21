@@ -19,6 +19,7 @@ import {
   tryConsumeFixQuota,
   tryConsumeSmsQuota,
 } from "./subscription.service";
+import { logger } from "../../lib/logger";
 import {
   sendPaymentFailedEmail,
   sendUsageLimitReachedEmail,
@@ -151,7 +152,7 @@ describe("tryConsumeFixQuota", () => {
 describe("handleStripeWebhookEvent", () => {
   it("ignore un événement déjà traité (idempotence)", async () => {
     prismaMock.stripeEvent.findUnique.mockResolvedValue({ id: "evt_1", type: "invoice.paid" } as never);
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi.spyOn(logger, "error").mockImplementation(() => {});
 
     await handleStripeWebhookEvent({ id: "evt_1", type: "invoice.paid" } as never);
 

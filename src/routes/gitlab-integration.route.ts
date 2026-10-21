@@ -12,6 +12,7 @@ import { fetchGitlabUser, listGitlabProjects, listGitlabBranches } from "../serv
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 // Même mécanique que l'installation GitHub (github-integration.route.ts) : popup ouverte par
 // le frontend, callback qui referme la popup via postMessage plutôt qu'une redirection pleine
@@ -93,7 +94,7 @@ gitlabPublicRouter.get("/api/integrations/gitlab/callback", async (req, res) => 
       })
     );
   } catch (err) {
-    console.error("Erreur lors de l'échange du code OAuth GitLab :", err);
+    logger.error({ err }, "Erreur lors de l'échange du code OAuth GitLab :");
     res.send(renderPostMessagePage({ error: "token_exchange_failed" }));
   }
 });
@@ -125,7 +126,7 @@ gitlabIntegrationRouter.post("/api/gitlab-connections", async (req, res) => {
 
     res.status(201).json({ connectionId: connection.id, gitlabUserLogin: connection.gitlabUserLogin });
   } catch (err) {
-    console.error("Erreur lors de l'enregistrement de la connexion GitLab :", err);
+    logger.error({ err }, "Erreur lors de l'enregistrement de la connexion GitLab :");
     res.status(500).json({ error: "Impossible d'enregistrer la connexion GitLab." });
   }
 });
@@ -141,7 +142,7 @@ gitlabIntegrationRouter.get("/api/integrations/gitlab/projects", async (req, res
     const projects = await listGitlabProjects(connectionId);
     res.json({ projects });
   } catch (err) {
-    console.error("Erreur lors de la récupération des projets GitLab :", err);
+    logger.error({ err }, "Erreur lors de la récupération des projets GitLab :");
     res.status(502).json({ error: "Impossible de récupérer les projets GitLab." });
   }
 });
@@ -158,7 +159,7 @@ gitlabIntegrationRouter.get("/api/integrations/gitlab/branches", async (req, res
     const branches = await listGitlabBranches(connectionId, gitlabProjectId);
     res.json({ branches });
   } catch (err) {
-    console.error("Erreur lors de la récupération des branches GitLab :", err);
+    logger.error({ err }, "Erreur lors de la récupération des branches GitLab :");
     res.status(502).json({ error: "Impossible de récupérer les branches GitLab." });
   }
 });
@@ -204,7 +205,7 @@ gitlabIntegrationRouter.post("/api/projects/:projectId/gitlab", async (req, res)
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de l'association GitLab du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de l'association GitLab du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible d'associer le dépôt GitLab à ce projet." });
   }
 });

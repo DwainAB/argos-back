@@ -8,6 +8,7 @@ import {
   stopLogStreamForProject as stopRenderLogStreamForProject,
   startLogStreamForProject as startRenderLogStreamForProject,
 } from "../providers/render/render-log-stream.service";
+import { logger } from "../../lib/logger";
 
 type StreamableProject = {
   id: string;
@@ -33,14 +34,14 @@ export function startLogStreamForAnyProvider(project: StreamableProject) {
       railwayProjectToken: project.railwayProjectToken,
       railwayServiceId: project.railwayServiceId,
       railwayEnvironmentId: project.railwayEnvironmentId,
-    }).catch((err) => console.error(`Échec de la reprise du streaming pour le projet ${project.id} :`, err));
+    }).catch((err) => logger.error({ err }, `Échec de la reprise du streaming pour le projet ${project.id} :`));
   } else if (project.renderApiKeyRef && project.renderOwnerId && project.renderResourceId) {
     startRenderLogStreamForProject({
       id: project.id,
       renderApiKey: decryptSecret(project.renderApiKeyRef.encryptedKey),
       renderOwnerId: project.renderOwnerId,
       renderResourceId: project.renderResourceId,
-    }).catch((err) => console.error(`Échec de la reprise du streaming pour le projet ${project.id} :`, err));
+    }).catch((err) => logger.error({ err }, `Échec de la reprise du streaming pour le projet ${project.id} :`));
   }
 }
 

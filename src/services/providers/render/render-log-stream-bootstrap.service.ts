@@ -1,6 +1,7 @@
 import { prisma } from "../../../lib/prisma";
 import { decryptSecret } from "../../../lib/encryption";
 import { startLogStreamForProject } from "./render-log-stream.service";
+import { logger } from "../../../lib/logger";
 
 export async function bootstrapRenderLogStreams() {
   const projects = await prisma.project.findMany({
@@ -33,10 +34,10 @@ export async function bootstrapRenderLogStreams() {
       renderApiKey: decryptSecret(project.renderApiKeyRef.encryptedKey),
       renderOwnerId: project.renderOwnerId,
       renderResourceId: project.renderResourceId,
-    }).catch((err) => console.error(`Échec du redémarrage du streaming pour le projet ${project.id} :`, err));
+    }).catch((err) => logger.error({ err }, `Échec du redémarrage du streaming pour le projet ${project.id} :`));
   }
 
   if (projects.length > 0) {
-    console.log(`Streaming Render relancé pour ${projects.length} projet(s) déjà connecté(s).`);
+    logger.info(`Streaming Render relancé pour ${projects.length} projet(s) déjà connecté(s).`);
   }
 }

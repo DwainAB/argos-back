@@ -5,6 +5,7 @@ import { env } from "../../config/env";
 import * as githubExplorer from "../providers/github/github-repo-explorer.service";
 import * as gitlabExplorer from "../providers/gitlab/gitlab-repo-explorer.service";
 import { scanForSecrets } from "../logs/secret-patterns";
+import { logger } from "../../lib/logger";
 
 export type RepoTreeEntry = { path: string; type: "blob" | "tree"; size?: number };
 type FileContentResult = { ok: true; path: string; content: string } | { ok: false; path: string; reason: string };
@@ -258,7 +259,7 @@ async function analyzeFile(
 
     return { newFindings, previousFindingsStatus };
   } catch (err) {
-    console.error(`Erreur d'analyse IA du fichier ${file.path} :`, err);
+    logger.error({ err }, `Erreur d'analyse IA du fichier ${file.path} :`);
     return empty;
   }
 }
@@ -311,7 +312,7 @@ async function synthesizeScores(client: OpenAI, findings: CodeFinding[]): Promis
       return scores;
     }
   } catch (err) {
-    console.error("Erreur lors de la synthèse des scores d'analyse de code :", err);
+    logger.error({ err }, "Erreur lors de la synthèse des scores d'analyse de code :");
   }
 
   return fallback;

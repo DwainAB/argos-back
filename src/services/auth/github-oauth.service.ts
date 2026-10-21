@@ -1,4 +1,5 @@
 import { env } from "../../config/env";
+import { logger } from "../../lib/logger";
 
 // Flow OAuth "user-to-server" d'une GitHub App (pas une OAuth App classique) : le paramètre
 // scope de /login/oauth/authorize est ignoré pour ce type d'app, les permissions viennent de
@@ -59,10 +60,10 @@ export async function fetchGithubProfile(accessToken: string): Promise<GithubPro
     const emailsResponse = await fetch("https://api.github.com/user/emails", { headers });
     if (emailsResponse.ok) {
       const emails = (await emailsResponse.json()) as { email: string; primary: boolean; verified: boolean }[];
-      console.log(`GitHub /user/emails pour ${user.login} :`, JSON.stringify(emails));
+      logger.debug({ login: user.login, emails }, "Réponse GitHub /user/emails");
       email = emails.find((e) => e.primary && e.verified)?.email ?? emails.find((e) => e.verified)?.email ?? null;
     } else {
-      console.error(`Échec de GitHub /user/emails pour ${user.login} : ${emailsResponse.status} ${await emailsResponse.text()}`);
+      logger.error(`Échec de GitHub /user/emails pour ${user.login} : ${emailsResponse.status} ${await emailsResponse.text()}`);
     }
   }
 

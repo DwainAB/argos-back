@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import { sendProjectShareEmail } from "../notifications/email.service";
+import { logger } from "../../lib/logger";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -69,7 +70,7 @@ export async function shareProject(input: { projectId: string; ownerUserId: stri
     to: normalizedEmail,
     projectName: project.name,
     organizationName: owner?.organizationName ?? "Une organisation",
-  }).catch((err) => console.error(`Erreur lors de l'envoi de l'email de partage à ${normalizedEmail} :`, err));
+  }).catch((err) => logger.error({ err }, `Erreur lors de l'envoi de l'email de partage à ${normalizedEmail} :`));
 
   return share;
 }

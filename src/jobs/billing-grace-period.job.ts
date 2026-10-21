@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
 import { stopAllLogStreamsForSubscription } from "../services/billing/log-stream-control.service";
+import { logger } from "../lib/logger";
 
 // Bloque l'accès et arrête le streaming de logs des abonnements en échec de paiement depuis
 // plus de PAYMENT_GRACE_PERIOD_DAYS, sans attendre que Stripe abandonne de son côté (son
@@ -28,7 +29,7 @@ export async function blockOverduePaymentSubscriptions() {
   }
 
   if (overdueSubscriptions.length > 0) {
-    console.log(
+    logger.info(
       `Blocage pour paiement en retard : ${overdueSubscriptions.length} abonnement(s) bloqué(s) après ${env.billing.paymentGracePeriodDays} jour(s) de délai de grâce.`,
     );
   }
@@ -40,8 +41,8 @@ export async function blockOverduePaymentSubscriptions() {
 // logs (3h) pour ne jamais faire tourner les deux jobs en même temps.
 export function scheduleBillingGracePeriodJob() {
   cron.schedule("0 4 * * *", () => {
-    blockOverduePaymentSubscriptions().catch((err) => console.error("Échec du blocage des paiements en retard :", err));
+    blockOverduePaymentSubscriptions().catch((err) => logger.error({ err }, "Échec du blocage des paiements en retard :"));
   });
 
-  console.log(`Blocage des paiements en retard planifié (délai de grâce : ${env.billing.paymentGracePeriodDays} jour(s), tous les jours à 4h).`);
+  logger.info(`Blocage des paiements en retard planifié (délai de grâce : ${env.billing.paymentGracePeriodDays} jour(s), tous les jours à 4h).`);
 }

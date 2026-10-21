@@ -6,6 +6,7 @@ import { buildCodeSource } from "../services/code-analysis/code-analysis.service
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { getSubscriptionForRequestingUser, tryConsumeFixQuota, consumeFixQuota } from "../services/billing/subscription.service";
 import { logActivity, getLastActor, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const alertsRouter = Router();
 
@@ -47,7 +48,7 @@ alertsRouter.get("/api/projects/alerts-summary", async (req, res) => {
 
     res.json({ summary });
   } catch (err) {
-    console.error("Erreur lors de la récupération du résumé des alertes par projet :", err);
+    logger.error({ err }, "Erreur lors de la récupération du résumé des alertes par projet :");
     res.status(500).json({ error: "Impossible de récupérer le résumé des alertes." });
   }
 });
@@ -91,7 +92,7 @@ alertsRouter.get("/api/projects/:projectId/alerts", async (req, res) => {
 
     res.json({ alerts: alertsWithActors, total });
   } catch (err) {
-    console.error(`Erreur lors de la récupération des alertes du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération des alertes du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer les alertes." });
   }
 });
@@ -119,7 +120,7 @@ alertsRouter.get("/api/alerts/:alertId", async (req, res) => {
 
     res.json({ alert: { ...alert, resolvedBy, fixDecidedBy } });
   } catch (err) {
-    console.error(`Erreur lors de la récupération de l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération de l'alerte ${alertId} :`);
     res.status(500).json({ error: "Impossible de récupérer l'alerte." });
   }
 });
@@ -153,7 +154,7 @@ alertsRouter.post("/api/alerts/:alertId/resolve", async (req, res) => {
 
     res.json({ alert: updated });
   } catch (err) {
-    console.error(`Erreur lors du marquage comme traitée de l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors du marquage comme traitée de l'alerte ${alertId} :`);
     res.status(500).json({ error: "Impossible de marquer cette alerte comme traitée." });
   }
 });
@@ -187,7 +188,7 @@ alertsRouter.post("/api/alerts/:alertId/reopen", async (req, res) => {
 
     res.json({ alert: updated });
   } catch (err) {
-    console.error(`Erreur lors de la réouverture de l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors de la réouverture de l'alerte ${alertId} :`);
     res.status(500).json({ error: "Impossible de rouvrir cette alerte." });
   }
 });
@@ -263,7 +264,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/request", async (req, res) => {
 
     res.json({ alert: updated });
   } catch (err) {
-    console.error(`Erreur lors de la demande de correction pour l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors de la demande de correction pour l'alerte ${alertId} :`);
     res.status(502).json({ error: "Impossible d'obtenir une proposition de correction." });
   }
 });
@@ -325,7 +326,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/accept", async (req, res) => {
 
     res.json({ alert: updated });
   } catch (err) {
-    console.error(`Erreur lors de la création de la pull request pour l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors de la création de la pull request pour l'alerte ${alertId} :`);
     res.status(502).json({ error: "Impossible de créer la pull request." });
   }
 });
@@ -363,7 +364,7 @@ alertsRouter.post("/api/alerts/:alertId/fix/reject", async (req, res) => {
 
     res.json({ alert: updated });
   } catch (err) {
-    console.error(`Erreur lors du refus du correctif pour l'alerte ${alertId} :`, err);
+    logger.error({ err }, `Erreur lors du refus du correctif pour l'alerte ${alertId} :`);
     res.status(500).json({ error: "Impossible de refuser le correctif." });
   }
 });

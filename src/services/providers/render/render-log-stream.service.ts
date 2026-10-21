@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { processIncomingLog } from "../../logs/log-grouper.service";
 import { persistGroupedLog } from "../../logs/log-ingestion.service";
+import { logger } from "../../../lib/logger";
 
 const RENDER_WS_URL = "wss://api.render.com/v1/logs/subscribe";
 
@@ -41,7 +42,7 @@ export async function startLogStreamForProject(project: {
   });
 
   socket.on("open", () => {
-    console.log(`Streaming Render démarré pour le projet ${project.id}.`);
+    logger.info(`Streaming Render démarré pour le projet ${project.id}.`);
   });
 
   socket.on("message", (raw) => {
@@ -49,7 +50,7 @@ export async function startLogStreamForProject(project: {
     try {
       log = JSON.parse(raw.toString());
     } catch (err) {
-      console.error(`Streaming Render (projet ${project.id}) — message illisible :`, err);
+      logger.error({ err }, `Streaming Render (projet ${project.id}) — message illisible :`);
       return;
     }
 
@@ -57,15 +58,15 @@ export async function startLogStreamForProject(project: {
 
     processIncomingLog(project.id, { timestamp: log.timestamp, message: log.message, severity }, (groupedLog) => {
       persistGroupedLog(project.id, "render", groupedLog).catch((err) =>
-        console.error(`Erreur d'enregistrement d'un log (projet ${project.id}) :`, err)
+        logger.error({ err }, `Erreur d'enregistrement d'un log (projet ${project.id}) :`)
       );
     });
   });
 
-  socket.on("error", (err) => console.error(`Streaming Render (projet ${project.id}) — erreur :`, err));
+  socket.on("error", (err) => logger.error({ err }, `Streaming Render (projet ${project.id}) — erreur :`));
 
   socket.on("close", () => {
-    console.log(`Streaming Render (projet ${project.id}) — connexion fermée.`);
+    logger.info(`Streaming Render (projet ${project.id}) — connexion fermée.`);
     activeSockets.delete(project.id);
   });
 

@@ -8,6 +8,7 @@ import {
 } from "../services/providers/railway/railway-oauth.service";
 import { storeRailwayToken, getStoredRailwayToken } from "../services/providers/railway/railway-token-store.service";
 import { fetchAccessibleProjects, fetchLatestDeploymentLogs, fetchMe } from "../services/providers/railway/railway-api.service";
+import { logger } from "../lib/logger";
 
 export const railwayIntegrationRouter = Router();
 
@@ -52,19 +53,22 @@ railwayIntegrationRouter.get("/api/integrations/railway/callback", async (req, r
   try {
     const token = await exchangeCodeForToken({ code: String(code), codeVerifier });
 
-    console.log("DEBUG token reçu :", {
-      token_type: token.token_type,
-      expires_in: token.expires_in,
-      has_refresh_token: !!token.refresh_token,
-      access_token_preview: token.access_token ? `${token.access_token.slice(0, 20)}...` : null,
-      access_token_length: token.access_token?.length,
-    });
+    logger.debug(
+      {
+        token_type: token.token_type,
+        expires_in: token.expires_in,
+        has_refresh_token: !!token.refresh_token,
+        access_token_preview: token.access_token ? `${token.access_token.slice(0, 20)}...` : null,
+        access_token_length: token.access_token?.length,
+      },
+      "Token Railway reçu",
+    );
 
     storeRailwayToken(token);
 
     res.redirect(`${env.frontendUrl}/dashboard/projects/new?railway_connected=true`);
   } catch (err) {
-    console.error("Erreur lors de l'échange du code OAuth Railway :", err);
+    logger.error({ err }, "Erreur lors de l'échange du code OAuth Railway :");
     res.redirect(`${env.frontendUrl}/dashboard/projects/new?railway_error=token_exchange_failed`);
   }
 });
@@ -113,7 +117,7 @@ railwayIntegrationRouter.get("/api/integrations/railway/projects", async (_req, 
     const projects = await fetchAccessibleProjects(stored.accessToken);
     res.json({ projects });
   } catch (err) {
-    console.error("Erreur lors de la récupération des projets Railway :", err);
+    logger.error({ err }, "Erreur lors de la récupération des projets Railway :");
     res.status(502).json({ error: "Impossible de récupérer les projets Railway." });
   }
 });
@@ -138,7 +142,7 @@ railwayIntegrationRouter.get("/api/integrations/railway/test-logs", async (req, 
     });
     res.json({ logs });
   } catch (err) {
-    console.error("Erreur lors de la récupération des logs Railway :", err);
+    logger.error({ err }, "Erreur lors de la récupération des logs Railway :");
     res.status(502).json({ error: "Impossible de récupérer les logs Railway." });
   }
 });

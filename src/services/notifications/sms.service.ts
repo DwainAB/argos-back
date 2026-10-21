@@ -1,4 +1,5 @@
 import { env } from "../../config/env";
+import { logger } from "../../lib/logger";
 
 const SMSFACTOR_ENDPOINT = "https://api.smsfactor.com/send";
 
@@ -8,7 +9,7 @@ type SmsfactorResponse = { status: number; message: string };
 
 async function send(params: { to: string; body: string }) {
   if (!env.smsfactor.apiToken) {
-    console.error("SMSFactor n'est pas configuré (SMSFACTOR_API_TOKEN manquant) — SMS non envoyé.");
+    logger.error("SMSFactor n'est pas configuré (SMSFACTOR_API_TOKEN manquant) — SMS non envoyé.");
     return;
   }
 
@@ -24,7 +25,7 @@ async function send(params: { to: string; body: string }) {
   const result = (await response.json()) as SmsfactorResponse;
 
   if (result.status !== 1) {
-    console.error(`Échec de l'envoi SMS via SMSFactor (${result.message}).`);
+    logger.error(`Échec de l'envoi SMS via SMSFactor (${result.message}).`);
   }
 }
 

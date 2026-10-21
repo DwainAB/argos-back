@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
+import { logger } from "../lib/logger";
 
 // Purge les LogEntry plus vieux que le seuil de rétention configuré (LOG_RETENTION_DAYS,
 // 7 jours par défaut). La suppression d'un LogEntry entraîne, par cascade Prisma, la
@@ -15,7 +16,7 @@ export async function purgeOldLogs() {
   });
 
   if (count > 0) {
-    console.log(`Purge des logs : ${count} entrée(s) de plus de ${env.logRetention.days} jour(s) supprimée(s).`);
+    logger.info(`Purge des logs : ${count} entrée(s) de plus de ${env.logRetention.days} jour(s) supprimée(s).`);
   }
 
   return count;
@@ -24,8 +25,8 @@ export async function purgeOldLogs() {
 // Programme la purge quotidienne, à 3h du matin (heure serveur).
 export function scheduleLogRetentionJob() {
   cron.schedule("0 3 * * *", () => {
-    purgeOldLogs().catch((err) => console.error("Échec de la purge des logs :", err));
+    purgeOldLogs().catch((err) => logger.error({ err }, "Échec de la purge des logs :"));
   });
 
-  console.log(`Purge des logs planifiée (rétention : ${env.logRetention.days} jour(s), tous les jours à 3h).`);
+  logger.info(`Purge des logs planifiée (rétention : ${env.logRetention.days} jour(s), tous les jours à 3h).`);
 }

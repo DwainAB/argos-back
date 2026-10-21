@@ -10,6 +10,7 @@ import {
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { getSubscriptionForRequestingUser, tryConsumeCodeAnalysisQuota } from "../services/billing/subscription.service";
 import { logActivity, getLastActor, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 const VALID_STATUSES: FindingStatus[] = ["open", "resolved", "ignored"];
 
@@ -37,7 +38,7 @@ codeAnalysisRouter.get("/api/projects/:projectId/code-analysis/estimate", async 
 
     res.json(estimate);
   } catch (err) {
-    console.error(`Erreur lors de l'estimation d'analyse de code du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de l'estimation d'analyse de code du projet ${projectId} :`);
     res.status(502).json({ error: "Impossible d'estimer l'analyse de ce dépôt." });
   }
 });
@@ -103,14 +104,14 @@ codeAnalysisRouter.post("/api/projects/:projectId/code-analysis", async (req, re
         })
       )
       .catch(async (err) => {
-        console.error(`Erreur lors de l'analyse de code ${analysis.id} (projet ${projectId}) :`, err);
+        logger.error({ err }, `Erreur lors de l'analyse de code ${analysis.id} (projet ${projectId}) :`);
         await prisma.codeAnalysis.update({
           where: { id: analysis.id },
           data: { status: "failed", errorMessage: err instanceof Error ? err.message : String(err), completedAt: new Date() },
         }).catch(() => {});
       });
   } catch (err) {
-    console.error(`Erreur lors du lancement de l'analyse de code du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors du lancement de l'analyse de code du projet ${projectId} :`);
     if (!res.headersSent) {
       res.status(502).json({ error: "Impossible de lancer l'analyse de ce dépôt." });
     }
@@ -140,7 +141,7 @@ codeAnalysisRouter.get("/api/projects/:projectId/code-analysis", async (req, res
 
     res.json({ analyses: analysesWithActors });
   } catch (err) {
-    console.error(`Erreur lors de la récupération des analyses de code du projet ${projectId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération des analyses de code du projet ${projectId} :`);
     res.status(500).json({ error: "Impossible de récupérer les analyses de code." });
   }
 });
@@ -161,7 +162,7 @@ codeAnalysisRouter.get("/api/code-analysis/:analysisId", async (req, res) => {
 
     res.json({ analysis: { ...analysis, startedBy } });
   } catch (err) {
-    console.error(`Erreur lors de la récupération de l'analyse de code ${analysisId} :`, err);
+    logger.error({ err }, `Erreur lors de la récupération de l'analyse de code ${analysisId} :`);
     res.status(500).json({ error: "Impossible de récupérer cette analyse." });
   }
 });
@@ -208,7 +209,7 @@ codeAnalysisRouter.patch("/api/code-analysis/:analysisId/findings/:findingId", a
 
     res.json({ finding: updatedFinding });
   } catch (err) {
-    console.error(`Erreur lors de la mise à jour du problème ${findingId} (analyse ${analysisId}) :`, err);
+    logger.error({ err }, `Erreur lors de la mise à jour du problème ${findingId} (analyse ${analysisId}) :`);
     res.status(500).json({ error: "Impossible de mettre à jour ce problème." });
   }
 });

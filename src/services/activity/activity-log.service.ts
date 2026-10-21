@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma";
 import type { Prisma } from "@prisma/client";
+import { logger } from "../../lib/logger";
 
 // Slugs stables des actions tracées — jamais de texte libre côté appelant, pour garder le
 // journal filtrable/traduisible indépendamment du contenu (voir schema.prisma, ActivityLog).
@@ -47,7 +48,7 @@ export async function logActivity(params: LogActivityParams): Promise<void> {
       },
     });
   } catch (err) {
-    console.error(`Erreur lors de l'écriture du journal d'activité (action ${params.action}) :`, err);
+    logger.error({ err, action: params.action }, "Erreur lors de l'écriture du journal d'activité");
   }
 }
 

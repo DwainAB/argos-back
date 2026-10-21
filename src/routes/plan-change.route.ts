@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { env } from "../config/env";
 import { PlanChangeError, downgradeToSoloPlan, getDowngradePreview, upgradeToBusinessPlan } from "../services/billing/plan-change.service";
 import { SubscriptionError, getSubscriptionForRequestingUser, previewPlanChange } from "../services/billing/subscription.service";
+import { logger } from "../lib/logger";
 
 const PLAN_CHANGE_RETURN_URL = `${env.frontendUrl}/dashboard/organizations/billing`;
 
@@ -28,7 +29,7 @@ planChangeRouter.get("/api/subscription/preview-plan-change", async (req, res) =
     if (err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors du calcul de l'aperçu de facturation :", err);
+    logger.error({ err }, "Erreur lors du calcul de l'aperçu de facturation :");
     res.status(500).json({ error: "Impossible de calculer le montant du changement de plan." });
   }
 });
@@ -48,7 +49,7 @@ planChangeRouter.get("/api/subscription/downgrade-preview", async (req, res) => 
     const preview = await getDowngradePreview(membership.organizationId);
     res.json(preview);
   } catch (err) {
-    console.error("Erreur lors du calcul de l'aperçu de downgrade :", err);
+    logger.error({ err }, "Erreur lors du calcul de l'aperçu de downgrade :");
     res.status(500).json({ error: "Impossible de préparer le changement de plan." });
   }
 });
@@ -66,7 +67,7 @@ planChangeRouter.post("/api/subscription/upgrade-to-business", async (req, res) 
     if (err instanceof PlanChangeError || err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors du passage au plan Business :", err);
+    logger.error({ err }, "Erreur lors du passage au plan Business :");
     res.status(500).json({ error: "Impossible de passer au plan Business." });
   }
 });
@@ -84,7 +85,7 @@ planChangeRouter.post("/api/subscription/downgrade-to-solo", async (req, res) =>
     if (err instanceof PlanChangeError || err instanceof SubscriptionError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors du passage au plan Solo :", err);
+    logger.error({ err }, "Erreur lors du passage au plan Solo :");
     res.status(500).json({ error: "Impossible de passer au plan Solo." });
   }
 });

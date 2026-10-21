@@ -23,6 +23,7 @@ import {
 import { hasActiveAccess } from "../services/billing/subscription.service";
 import { env } from "../config/env";
 import { GoogleAuthError, verifyGoogleIdToken } from "../services/auth/google-oauth.service";
+import { logger } from "../lib/logger";
 
 export const authRouter = Router();
 
@@ -101,7 +102,7 @@ authRouter.post("/api/auth/signup", async (req, res) => {
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
     sendWelcomeEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de bienvenue à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de bienvenue à ${user.email} :`)
     );
 
     res.status(201).json({ user: await toPublicUser(user) });
@@ -109,7 +110,7 @@ authRouter.post("/api/auth/signup", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de l'inscription :", err);
+    logger.error({ err }, "Erreur lors de l'inscription :");
     res.status(500).json({ error: "Impossible de créer le compte." });
   }
 });
@@ -121,7 +122,7 @@ authRouter.post("/api/auth/login", async (req, res) => {
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
     sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
     );
 
     res.json({ user: await toPublicUser(user) });
@@ -129,7 +130,7 @@ authRouter.post("/api/auth/login", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la connexion :", err);
+    logger.error({ err }, "Erreur lors de la connexion :");
     res.status(500).json({ error: "Impossible de vous connecter." });
   }
 });
@@ -149,7 +150,7 @@ authRouter.post("/api/auth/forgot-password", async (req, res) => {
     if (result) {
       const resetUrl = `${env.frontendUrl}/reset-password?token=${result.token}`;
       sendPasswordResetEmail({ to: (req.body?.email as string).trim().toLowerCase(), firstName: result.user.firstName, resetUrl }).catch(
-        (err) => console.error("Erreur lors de l'envoi de l'email de réinitialisation :", err)
+        (err) => logger.error({ err }, "Erreur lors de l'envoi de l'email de réinitialisation :")
       );
     }
 
@@ -160,7 +161,7 @@ authRouter.post("/api/auth/forgot-password", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la demande de réinitialisation de mot de passe :", err);
+    logger.error({ err }, "Erreur lors de la demande de réinitialisation de mot de passe :");
     res.status(500).json({ error: "Impossible de traiter cette demande." });
   }
 });
@@ -170,7 +171,7 @@ authRouter.post("/api/auth/reset-password", async (req, res) => {
     const user = await resetPassword({ token: req.body?.token, newPassword: req.body?.newPassword });
 
     sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`)
     );
 
     res.json({ message: "Mot de passe réinitialisé avec succès." });
@@ -178,7 +179,7 @@ authRouter.post("/api/auth/reset-password", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la réinitialisation du mot de passe :", err);
+    logger.error({ err }, "Erreur lors de la réinitialisation du mot de passe :");
     res.status(500).json({ error: "Impossible de réinitialiser le mot de passe." });
   }
 });
@@ -194,7 +195,7 @@ authRouter.post("/api/auth/google", async (req, res) => {
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
     sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
     );
 
     res.json({ user: await toPublicUser(user) });
@@ -205,7 +206,7 @@ authRouter.post("/api/auth/google", async (req, res) => {
     if (err instanceof GoogleAuthError) {
       return res.status(401).json({ error: err.message });
     }
-    console.error("Erreur lors de la connexion Google :", err);
+    logger.error({ err }, "Erreur lors de la connexion Google :");
     res.status(500).json({ error: "Impossible de vous connecter avec Google." });
   }
 });
@@ -229,7 +230,7 @@ authRouter.post("/api/auth/gitlab", async (req, res) => {
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
     sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
     );
 
     res.json({ user: await toPublicUser(user) });
@@ -237,7 +238,7 @@ authRouter.post("/api/auth/gitlab", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la connexion GitLab :", err);
+    logger.error({ err }, "Erreur lors de la connexion GitLab :");
     res.status(500).json({ error: "Impossible de vous connecter avec GitLab." });
   }
 });
@@ -259,7 +260,7 @@ authRouter.post("/api/auth/github", async (req, res) => {
     res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 
     sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
     );
 
     res.json({ user: await toPublicUser(user) });
@@ -267,7 +268,7 @@ authRouter.post("/api/auth/github", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la connexion GitHub :", err);
+    logger.error({ err }, "Erreur lors de la connexion GitHub :");
     res.status(500).json({ error: "Impossible de vous connecter avec GitHub." });
   }
 });
@@ -282,7 +283,7 @@ authRouter.get("/api/auth/me", authMiddleware, async (req, res) => {
 
     res.json({ user: await toPublicUser(user) });
   } catch (err) {
-    console.error("Erreur lors de la récupération de l'utilisateur courant :", err);
+    logger.error({ err }, "Erreur lors de la récupération de l'utilisateur courant :");
     res.status(500).json({ error: "Impossible de récupérer l'utilisateur courant." });
   }
 });
@@ -295,7 +296,7 @@ authRouter.patch("/api/auth/me", authMiddleware, async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors de la mise à jour du numéro de téléphone :", err);
+    logger.error({ err }, "Erreur lors de la mise à jour du numéro de téléphone :");
     res.status(500).json({ error: "Impossible de mettre à jour le numéro de téléphone." });
   }
 });
@@ -308,7 +309,7 @@ authRouter.patch("/api/auth/password", authMiddleware, async (req, res) => {
     });
 
     sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      console.error(`Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`, err)
+      logger.error({ err }, `Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`)
     );
 
     res.json({ user: await toPublicUser(user) });
@@ -316,7 +317,7 @@ authRouter.patch("/api/auth/password", authMiddleware, async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error("Erreur lors du changement de mot de passe :", err);
+    logger.error({ err }, "Erreur lors du changement de mot de passe :");
     res.status(500).json({ error: "Impossible de mettre à jour le mot de passe." });
   }
 });

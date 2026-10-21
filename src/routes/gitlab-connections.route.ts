@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { logger } from "../lib/logger";
 
 export const gitlabConnectionsRouter = Router();
 
@@ -44,7 +45,7 @@ gitlabConnectionsRouter.get("/api/gitlab-connections", async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("Erreur lors de la récupération des connexions GitLab :", err);
+    logger.error({ err }, "Erreur lors de la récupération des connexions GitLab :");
     res.status(502).json({ error: "Impossible de récupérer les connexions GitLab." });
   }
 });
@@ -87,7 +88,7 @@ gitlabConnectionsRouter.delete("/api/gitlab-connections/:connectionId", async (r
     if (err instanceof OrganizationError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    console.error(`Erreur lors de la déconnexion GitLab ${connectionId} :`, err);
+    logger.error({ err }, `Erreur lors de la déconnexion GitLab ${connectionId} :`);
     res.status(500).json({ error: "Impossible de déconnecter GitLab." });
   }
 });
