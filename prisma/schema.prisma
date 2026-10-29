@@ -12,26 +12,14 @@ model User {
   email        String   @unique
   firstName    String
   lastName     String
-  passwordHash String
   phone        String?
   createdAt    DateTime @default(now())
 
-  // Identifiant Google (claim "sub" du token), renseigné dès qu'un compte existant se
-  // connecte au moins une fois via Google — la connexion Google ne crée jamais de compte,
-  // elle ne fait que se lier à un compte déjà inscrit par email/mot de passe.
-  googleId String? @unique
-
-  // Identifiant GitLab (id numérique du compte), même principe et même restriction que
-  // googleId ci-dessus — voir loginWithGitlab (auth.service.ts). Distinct de
-  // GitlabConnection : ce champ sert uniquement à la connexion à Argos AI elle-même, jamais
-  // à associer un dépôt de code à un projet.
-  gitlabId Int? @unique
-
-  // Identifiant GitHub (id numérique du compte), même principe que gitlabId ci-dessus — voir
-  // loginWithGithub (auth.service.ts). Distinct de githubInstallationId (sur Project) : ce
-  // champ sert uniquement à la connexion à Argos AI elle-même, jamais à l'installation de la
-  // GitHub App sur un dépôt.
-  githubId Int? @unique
+  // Identifiant de l'utilisateur chez Clerk (claim "sub" du token de session), qui gère
+  // désormais toute l'authentification (email/mot de passe, Google, GitHub, GitLab). Le compte
+  // Argos AI n'est créé qu'à la fin de l'onboarding (type de compte, organisation), voir
+  // completeOnboarding (auth.service.ts).
+  clerkId String @unique
 
   accountType      String  @default("personal")
   organizationName String?
@@ -49,28 +37,11 @@ model User {
 
   subscription Subscription?
 
-  passwordResetTokens PasswordResetToken[]
-
   renderApiKeys RenderApiKey[]
 
   gitlabConnections GitlabConnection[]
 
   activityLogs ActivityLog[]
-}
-
-// Jeton à usage unique envoyé par email pour réinitialiser un mot de passe oublié (page de
-// login, utilisateur non connecté). Seul le hash du jeton est stocké : le jeton en clair ne
-// transite que dans le lien de l'email, jamais en base.
-model PasswordResetToken {
-  id        String    @id @default(uuid())
-  tokenHash String    @unique
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
-
-  @@index([userId])
 }
 
 model Organization {
