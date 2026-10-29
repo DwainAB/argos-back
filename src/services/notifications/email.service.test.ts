@@ -16,11 +16,8 @@ vi.mock("../../config/env", () => ({
 
 import {
   sendAlertEmail,
-  sendLoginNotificationEmail,
   sendOrganizationAddedEmail,
   sendOrganizationInvitationEmail,
-  sendPasswordChangedEmail,
-  sendPasswordResetEmail,
   sendPaymentFailedEmail,
   sendProjectShareEmail,
   sendUsageLimitReachedEmail,
@@ -39,30 +36,6 @@ describe("sendWelcomeEmail", () => {
     expect(sendMock).toHaveBeenCalledWith(
       expect.objectContaining({ to: "user@example.com", subject: "Bienvenue sur Argos AI" }),
     );
-  });
-});
-
-describe("sendLoginNotificationEmail", () => {
-  it("envoie l'email de notification de connexion", async () => {
-    await sendLoginNotificationEmail({ to: "user@example.com", firstName: "Jean" });
-
-    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ to: "user@example.com" }));
-  });
-});
-
-describe("sendPasswordResetEmail", () => {
-  it("inclut l'url de réinitialisation dans le contenu HTML", async () => {
-    await sendPasswordResetEmail({ to: "user@example.com", firstName: "Jean", resetUrl: "https://ai-argos.com/reset?token=abc" });
-
-    const call = sendMock.mock.calls[0][0];
-    expect(call.html).toContain("https://ai-argos.com/reset?token=abc");
-  });
-});
-
-describe("sendPasswordChangedEmail", () => {
-  it("envoie l'email de confirmation de changement de mot de passe", async () => {
-    await sendPasswordChangedEmail({ to: "user@example.com", firstName: "Jean" });
-    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 });
 

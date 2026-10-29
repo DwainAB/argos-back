@@ -14,7 +14,7 @@ servers:
 
 tags:
   - name: Auth
-    description: Inscription, connexion, gestion du compte
+    description: Configuration et gestion du compte Argos AI (authentification déléguée à Clerk)
   - name: Projects
     description: Création et gestion des projets surveillés
   - name: Logs
@@ -32,11 +32,13 @@ tags:
 
 components:
   securitySchemes:
-    sessionCookie:
-      type: apiKey
-      in: cookie
-      name: argos_session
-      description: Cookie de session JWT posé après connexion (httpOnly).
+    clerkSession:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Token de session Clerk (en-tête Authorization: Bearer), obtenu côté frontend via
+        getToken(). Inscription, connexion et mot de passe sont gérés par Clerk.
 
   schemas:
     Error:
@@ -147,7 +149,7 @@ components:
         type: string
 
 security:
-  - sessionCookie: []
+  - clerkSession: []
 
 paths:
   /health:
@@ -167,66 +169,35 @@ paths:
                     type: string
                     example: ok
 
-  /api/auth/signup:
+  /api/auth/onboarding:
     post:
       tags: [Auth]
-      summary: Crée un nouveau compte
-      security: []
+      summary: Crée le compte Argos AI d'un utilisateur déjà authentifié par Clerk
+      description: >
+        Appelé une seule fois après l'inscription chez Clerk. L'email est lu depuis Clerk,
+        jamais depuis le corps de la requête. Tant que cette étape n'est pas faite, les routes
+        protégées répondent 403 avec le code ONBOARDING_REQUIRED.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [email, password, firstName, lastName]
+              required: [firstName, lastName, accountType]
               properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
                 firstName:
                   type: string
                 lastName:
                   type: string
+                accountType:
+                  type: string
+                  enum: [personal, organization]
+                organizationName:
+                  type: string
+                  description: Obligatoire si accountType vaut organization
       responses:
         "201":
-          description: Compte créé, cookie de session posé
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  user:
-                    $ref: "#/components/schemas/User"
-        "409":
-          description: Email déjà utilisé
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/auth/login:
-    post:
-      tags: [Auth]
-      summary: Connecte un utilisateur par email/mot de passe
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email, password]
-              properties:
-                email:
-                  type: string
-                  format: email
-                password:
-                  type: string
-      responses:
-        "200":
-          description: Connexion réussie, cookie de session posé
+          description: Compte créé
           content:
             application/json:
               schema:
@@ -235,19 +206,13 @@ paths:
                   user:
                     $ref: "#/components/schemas/User"
         "401":
-          description: Identifiants invalides
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Compte déjà configuré ou email déjà utilisé
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  /api/auth/logout:
-    post:
-      tags: [Auth]
-      summary: Déconnecte l'utilisateur courant (efface le cookie de session)
-      responses:
-        "204":
-          description: Déconnecté
 
   /api/auth/me:
     get:
@@ -287,67 +252,6 @@ paths:
                 properties:
                   user:
                     $ref: "#/components/schemas/User"
-
-  /api/auth/password:
-    patch:
-      tags: [Auth]
-      summary: Change le mot de passe de l'utilisateur courant
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [currentPassword, newPassword]
-              properties:
-                currentPassword:
-                  type: string
-                newPassword:
-                  type: string
-      responses:
-        "200":
-          description: Mot de passe mis à jour
-
-  /api/auth/forgot-password:
-    post:
-      tags: [Auth]
-      summary: Envoie un email de réinitialisation de mot de passe (si le compte existe)
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [email]
-              properties:
-                email:
-                  type: string
-                  format: email
-      responses:
-        "200":
-          description: Toujours 200, même si l'email n'existe pas (anti-énumération de comptes)
-
-  /api/auth/reset-password:
-    post:
-      tags: [Auth]
-      summary: Réinitialise le mot de passe à partir du token reçu par email
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [token, newPassword]
-              properties:
-                token:
-                  type: string
-                newPassword:
-                  type: string
-      responses:
-        "200":
-          description: Mot de passe réinitialisé
 
   /api/projects:
     get:

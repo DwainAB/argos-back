@@ -115,52 +115,6 @@ export function sendWelcomeEmail(params: { to: string; firstName: string }) {
   });
 }
 
-export function sendLoginNotificationEmail(params: { to: string; firstName: string }) {
-  return send({
-    to: params.to,
-    subject: "Nouvelle connexion à votre compte Argos AI",
-    html: layout({
-      preheader: "Une connexion vient d'avoir lieu sur votre compte.",
-      body: `
-        <p style="${TITLE}">Nouvelle connexion</p>
-        <p style="${TEXT}">Bonjour ${params.firstName},</p>
-        <p style="${TEXT_LAST}">Une connexion vient d'avoir lieu sur votre compte Argos AI. Si ce n'est pas vous, changez votre mot de passe dès que possible.</p>
-      `,
-    }),
-  });
-}
-
-export function sendPasswordResetEmail(params: { to: string; firstName: string; resetUrl: string }) {
-  return send({
-    to: params.to,
-    subject: "Réinitialisation de votre mot de passe Argos AI",
-    html: layout({
-      preheader: "Un lien pour réinitialiser votre mot de passe vous a été envoyé.",
-      body: `
-        <p style="${TITLE}">Réinitialisation de mot de passe</p>
-        <p style="${TEXT}">Bonjour ${params.firstName},</p>
-        <p style="${TEXT_LAST}">Vous avez demandé à réinitialiser votre mot de passe Argos AI. Ce lien est valable une heure. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
-        ${button({ href: params.resetUrl, label: "Réinitialiser mon mot de passe" })}
-      `,
-    }),
-  });
-}
-
-export function sendPasswordChangedEmail(params: { to: string; firstName: string }) {
-  return send({
-    to: params.to,
-    subject: "Votre mot de passe Argos AI a été modifié",
-    html: layout({
-      preheader: "Le mot de passe de votre compte vient d'être modifié.",
-      body: `
-        <p style="${TITLE}">Mot de passe modifié</p>
-        <p style="${TEXT}">Bonjour ${params.firstName},</p>
-        <p style="${TEXT_LAST}">Le mot de passe de votre compte Argos AI vient d'être modifié. Si ce n'est pas vous, contactez-nous dès que possible.</p>
-      `,
-    }),
-  });
-}
-
 export function sendProjectShareEmail(params: { to: string; projectName: string; organizationName: string }) {
   return send({
     to: params.to,

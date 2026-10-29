@@ -1,47 +1,14 @@
 import { Router } from "express";
+import { clerkClient } from "@clerk/express";
 import { prisma } from "../lib/prisma";
-import {
-  AuthError,
-  changePassword,
-  login,
-  loginWithGoogle,
-  loginWithGitlab,
-  loginWithGithub,
-  requestPasswordReset,
-  resetPassword,
-  signAuthToken,
-  signup,
-  updatePhone,
-} from "../services/auth/auth.service";
-import { authMiddleware, SESSION_COOKIE } from "../middlewares/auth.middleware";
-import {
-  sendLoginNotificationEmail,
-  sendPasswordChangedEmail,
-  sendPasswordResetEmail,
-  sendWelcomeEmail,
-} from "../services/notifications/email.service";
+import { AuthError, completeOnboarding, updatePhone } from "../services/auth/auth.service";
+import { authMiddleware, clerkSessionMiddleware } from "../middlewares/auth.middleware";
+import { sendWelcomeEmail } from "../services/notifications/email.service";
 import { hasActiveAccess } from "../services/billing/subscription.service";
 import { env } from "../config/env";
-import { GoogleAuthError, verifyGoogleIdToken } from "../services/auth/google-oauth.service";
 import { logger } from "../lib/logger";
 
 export const authRouter = Router();
-
-const SESSION_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
-
-// Frontend (ai-argos.com) et backend (up.railway.app) sont deux domaines distincts, pas des
-// sous-domaines d'un même site : le cookie de session traverse donc une frontière cross-site
-// à chaque requête fetch. SameSite=Lax (le défaut) y est systématiquement bloqué par le
-// navigateur, credentials:"include" ou pas côté client — d'où le 401 permanent malgré une
-// connexion apparemment réussie. SameSite=None exige Secure (HTTPS), donc jamais en local.
-const IS_CROSS_SITE_DEPLOYMENT = process.env.NODE_ENV === "production";
-
-const SESSION_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: IS_CROSS_SITE_DEPLOYMENT,
-  sameSite: (IS_CROSS_SITE_DEPLOYMENT ? "none" : "lax") as "none" | "lax",
-  maxAge: SESSION_COOKIE_MAX_AGE,
-};
 
 // L'abonnement d'un compte est le sien propre (compte personnel non membre d'une
 // organisation) ou celui, partagé, de l'organisation dont il est membre.
@@ -95,11 +62,19 @@ async function toPublicUser(user: {
   };
 }
 
-authRouter.post("/api/auth/signup", async (req, res) => {
+// Inscription, connexion, mot de passe oublié et comptes liés (Google, GitHub, GitLab) sont
+// entièrement gérés par Clerk : il ne reste ici que la création du compte Argos AI lui-même
+// (type de compte, organisation), au premier passage après l'inscription chez Clerk.
+authRouter.post("/api/auth/onboarding", clerkSessionMiddleware, async (req, res) => {
   try {
-    const user = await signup(req.body ?? {});
-    const token = signAuthToken(user.id);
-    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+    const clerkUser = await clerkClient.users.getUser(req.clerkUserId as string);
+    const primaryEmail = clerkUser.primaryEmailAddress?.emailAddress;
+
+    if (!primaryEmail) {
+      return res.status(400).json({ error: "Aucune adresse email principale n'est associée à ce compte." });
+    }
+
+    const user = await completeOnboarding({ clerkId: clerkUser.id, email: primaryEmail }, req.body ?? {});
 
     sendWelcomeEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
       logger.error({ err }, `Erreur lors de l'envoi de l'email de bienvenue à ${user.email} :`)
@@ -110,166 +85,8 @@ authRouter.post("/api/auth/signup", async (req, res) => {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
-    logger.error({ err }, "Erreur lors de l'inscription :");
+    logger.error({ err }, "Erreur lors de la configuration du compte :");
     res.status(500).json({ error: "Impossible de créer le compte." });
-  }
-});
-
-authRouter.post("/api/auth/login", async (req, res) => {
-  try {
-    const user = await login(req.body ?? {});
-    const token = signAuthToken(user.id);
-    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-
-    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
-    );
-
-    res.json({ user: await toPublicUser(user) });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la connexion :");
-    res.status(500).json({ error: "Impossible de vous connecter." });
-  }
-});
-
-authRouter.post("/api/auth/logout", (_req, res) => {
-  // clearCookie doit recevoir les mêmes attributs secure/sameSite que ceux posés à la
-  // création : un mismatch (ex: sameSite différent) fait que le navigateur ne reconnaît pas
-  // le cookie à effacer et le laisse en place.
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: SESSION_COOKIE_OPTIONS.secure, sameSite: SESSION_COOKIE_OPTIONS.sameSite });
-  res.status(204).end();
-});
-
-authRouter.post("/api/auth/forgot-password", async (req, res) => {
-  try {
-    const result = await requestPasswordReset(req.body?.email);
-
-    if (result) {
-      const resetUrl = `${env.frontendUrl}/reset-password?token=${result.token}`;
-      sendPasswordResetEmail({ to: (req.body?.email as string).trim().toLowerCase(), firstName: result.user.firstName, resetUrl }).catch(
-        (err) => logger.error({ err }, "Erreur lors de l'envoi de l'email de réinitialisation :")
-      );
-    }
-
-    // Réponse identique que l'email corresponde à un compte ou non, pour ne pas permettre
-    // de deviner quels emails sont inscrits (énumération de comptes).
-    res.json({ message: "Si un compte existe avec cet email, un lien de réinitialisation vient d'être envoyé." });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la demande de réinitialisation de mot de passe :");
-    res.status(500).json({ error: "Impossible de traiter cette demande." });
-  }
-});
-
-authRouter.post("/api/auth/reset-password", async (req, res) => {
-  try {
-    const user = await resetPassword({ token: req.body?.token, newPassword: req.body?.newPassword });
-
-    sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`)
-    );
-
-    res.json({ message: "Mot de passe réinitialisé avec succès." });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la réinitialisation du mot de passe :");
-    res.status(500).json({ error: "Impossible de réinitialiser le mot de passe." });
-  }
-});
-
-// Flux 100% frontend (Google Identity Services) : le navigateur obtient directement un
-// id_token de Google et nous l'envoie ici pour vérification, pas de redirection serveur.
-authRouter.post("/api/auth/google", async (req, res) => {
-  try {
-    const profile = await verifyGoogleIdToken(req.body?.idToken);
-    const user = await loginWithGoogle(profile);
-
-    const token = signAuthToken(user.id);
-    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-
-    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
-    );
-
-    res.json({ user: await toPublicUser(user) });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    if (err instanceof GoogleAuthError) {
-      return res.status(401).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la connexion Google :");
-    res.status(500).json({ error: "Impossible de vous connecter avec Google." });
-  }
-});
-
-// À la différence de Google (id_token vérifié côté serveur sans jamais transiter par une
-// popup), GitLab est un vrai flow OAuth2 par redirection : le frontend récupère
-// gitlabUserId/gitlabUserEmail via la même popup que GitlabConnectButton.tsx (voir
-// gitlab-integration.route.ts callback) et nous les transmet ici, déjà vérifiés côté serveur
-// lors de l'échange du code OAuth — rien de plus à revérifier qu'un GoogleAuthError ici.
-authRouter.post("/api/auth/gitlab", async (req, res) => {
-  try {
-    const { gitlabUserId, gitlabUserEmail } = req.body ?? {};
-
-    if (!gitlabUserId) {
-      return res.status(400).json({ error: "gitlabUserId requis." });
-    }
-
-    const user = await loginWithGitlab({ gitlabId: Number(gitlabUserId), email: gitlabUserEmail ?? null });
-
-    const token = signAuthToken(user.id);
-    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-
-    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
-    );
-
-    res.json({ user: await toPublicUser(user) });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la connexion GitLab :");
-    res.status(500).json({ error: "Impossible de vous connecter avec GitLab." });
-  }
-});
-
-// Même mécanique que /api/auth/gitlab ci-dessus : githubUserId/githubUserEmail viennent de la
-// popup OAuth (voir github-login.route.ts callback), déjà vérifiés côté serveur lors de
-// l'échange du code.
-authRouter.post("/api/auth/github", async (req, res) => {
-  try {
-    const { githubUserId, githubUserEmail } = req.body ?? {};
-
-    if (!githubUserId) {
-      return res.status(400).json({ error: "githubUserId requis." });
-    }
-
-    const user = await loginWithGithub({ githubId: Number(githubUserId), email: githubUserEmail ?? null });
-
-    const token = signAuthToken(user.id);
-    res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-
-    sendLoginNotificationEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de notification de connexion à ${user.email} :`)
-    );
-
-    res.json({ user: await toPublicUser(user) });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors de la connexion GitHub :");
-    res.status(500).json({ error: "Impossible de vous connecter avec GitHub." });
   }
 });
 
@@ -298,26 +115,5 @@ authRouter.patch("/api/auth/me", authMiddleware, async (req, res) => {
     }
     logger.error({ err }, "Erreur lors de la mise à jour du numéro de téléphone :");
     res.status(500).json({ error: "Impossible de mettre à jour le numéro de téléphone." });
-  }
-});
-
-authRouter.patch("/api/auth/password", authMiddleware, async (req, res) => {
-  try {
-    const user = await changePassword(req.userId as string, {
-      currentPassword: req.body?.currentPassword,
-      newPassword: req.body?.newPassword,
-    });
-
-    sendPasswordChangedEmail({ to: user.email, firstName: user.firstName }).catch((err) =>
-      logger.error({ err }, `Erreur lors de l'envoi de l'email de changement de mot de passe à ${user.email} :`)
-    );
-
-    res.json({ user: await toPublicUser(user) });
-  } catch (err) {
-    if (err instanceof AuthError) {
-      return res.status(err.statusCode).json({ error: err.message });
-    }
-    logger.error({ err }, "Erreur lors du changement de mot de passe :");
-    res.status(500).json({ error: "Impossible de mettre à jour le mot de passe." });
   }
 });

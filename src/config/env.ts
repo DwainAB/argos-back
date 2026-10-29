@@ -18,8 +18,11 @@ export const env = {
   // (voir cors() dans app.ts), ce qui a déjà bloqué toute requête cross-origin en production.
   frontendUrl: (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/+$/, ""),
   databaseUrl: process.env.DATABASE_URL ?? "",
-  auth: {
-    jwtSecret: process.env.JWT_SECRET ?? "dev-secret-a-ne-jamais-utiliser-en-production",
+  // Clerk (dashboard.clerk.com > API keys) : gère toute l'authentification des utilisateurs.
+  // @clerk/express lit lui-même CLERK_SECRET_KEY et CLERK_PUBLISHABLE_KEY dans process.env ;
+  // seule la clé secrète du webhook est utilisée explicitement (voir clerk-webhook.route.ts).
+  clerk: {
+    webhookSigningSecret: process.env.CLERK_WEBHOOK_SIGNING_SECRET ?? "",
   },
   // Clé symétrique (32 octets, encodée en base64 ou hex) servant à chiffrer les secrets
   // sensibles stockés en base (ex: clés API Render) — voir lib/encryption.ts. À générer une
@@ -41,13 +44,6 @@ export const env = {
     clientSecret: process.env.GITHUB_APP_CLIENT_SECRET ?? "",
     slug: process.env.GITHUB_APP_SLUG ?? "",
     redirectUri: process.env.GITHUB_APP_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github/callback",
-    // Callback distinct de redirectUri ci-dessus : celui-ci sert au flow "se connecter avec
-    // GitHub" (OAuth user-to-server, voir github-oauth.service.ts), l'autre au flow
-    // d'installation de la GitHub App sur un dépôt — deux réponses différentes de GitHub,
-    // donc deux routes de callback, à déclarer séparément dans les paramètres de la GitHub
-    // App (github.com/settings/apps/<slug> > Identifying and authorizing users > Callback URL).
-    loginRedirectUri:
-      process.env.GITHUB_APP_LOGIN_REDIRECT_URI ?? "http://localhost:4000/api/integrations/github-login/callback",
     privateKey: loadGithubPrivateKey(),
   },
   // Application OAuth2 GitLab (gitlab.com > Edit profile > Applications, ou au niveau d'un
@@ -86,12 +82,6 @@ export const env = {
     // IDs des Price Stripe (Dashboard > Product catalog), un par plan/intervalle.
     priceSolo: process.env.STRIPE_PRICE_SOLO ?? "",
     priceBusiness: process.env.STRIPE_PRICE_BUSINESS ?? "",
-  },
-  google: {
-    // Flux 100% frontend (Google Identity Services, bouton "Continuer avec Google" du
-    // login) : un id_token est vérifié côté serveur avec ce seul Client ID, jamais de
-    // client_secret ni d'échange de code — voir google-oauth.service.ts.
-    oauthClientId: process.env.GOOGLE_OAUTH_CLIENT_ID ?? "",
   },
   logRetention: {
     // Durée de conservation des logs (LogEntry) côté Argos AI, indépendante de la
