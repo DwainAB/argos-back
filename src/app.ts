@@ -3,6 +3,7 @@ import path from "node:path";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { clerkMiddleware } from "@clerk/express";
 import swaggerUi from "swagger-ui-express";
 import YAML from "js-yaml";
 import { env } from "./config/env";
@@ -17,7 +18,6 @@ import { logsRouter } from "./routes/logs.route";
 import { alertsRouter } from "./routes/alerts.route";
 import { codeAnalysisRouter } from "./routes/code-analysis.route";
 import { githubPublicRouter, githubIntegrationRouter } from "./routes/github-integration.route";
-import { githubLoginRouter } from "./routes/github-login.route";
 import { gitlabPublicRouter, gitlabIntegrationRouter } from "./routes/gitlab-integration.route";
 import { gitlabConnectionsRouter } from "./routes/gitlab-connections.route";
 import { projectSharesRouter } from "./routes/project-shares.route";
@@ -25,6 +25,7 @@ import { organizationRouter } from "./routes/organization.route";
 import { subscriptionRouter } from "./routes/subscription.route";
 import { planChangeRouter } from "./routes/plan-change.route";
 import { stripeWebhookRouter } from "./routes/stripe-webhook.route";
+import { clerkWebhookRouter } from "./routes/clerk-webhook.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
@@ -33,12 +34,18 @@ export function createApp() {
 
   app.use(cors({ origin: env.frontendUrl, credentials: true }));
 
-  // Monté avant express.json() : Stripe a besoin du corps brut, non parsé, pour vérifier
-  // la signature de la requête (voir stripe-webhook.route.ts).
+  // Montés avant express.json() : Stripe et Clerk ont besoin du corps brut, non parsé, pour vérifier
+  // la signature de la requête (voir stripe-webhook.route.ts, clerk-webhook.route.ts).
   app.use(stripeWebhookRouter);
+  app.use(clerkWebhookRouter);
 
   app.use(express.json());
   app.use(cookieParser());
+
+  // Vérifie le token de session Clerk (en-tête Authorization: Bearer, envoyé par apiFetch
+  // côté frontend) sur chaque requête et le rend lisible via getAuth(req) — ne bloque
+  // jamais à lui seul, le refus d'accès est fait par authMiddleware.
+  app.use(clerkMiddleware());
 
   app.use(healthRouter);
 
@@ -52,7 +59,6 @@ export function createApp() {
   app.use(authRouter);
 
   app.use(githubPublicRouter);
-  app.use(githubLoginRouter);
   app.use(gitlabPublicRouter);
 
   app.use(authMiddleware);

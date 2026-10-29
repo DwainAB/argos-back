@@ -1,19 +1,5 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import crypto from "node:crypto";
 import { prisma } from "../../lib/prisma";
-import { env } from "../../config/env";
 import { createPendingSubscription } from "../billing/subscription.service";
-
-const BCRYPT_ROUNDS = 10;
-
-const TOKEN_TTL = "7d";
-
-// Durée de validité d'un lien de réinitialisation de mot de passe (email "mot de passe oublié").
-const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD_LENGTH = 8;
 
 // Format E.164 (ex: +33612345678), accepté par SMSFactor pour l'envoi de SMS.
 const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
@@ -24,18 +10,6 @@ export class AuthError extends Error {
     public statusCode: number,
   ) {
     super(message);
-  }
-}
-
-function assertValidEmail(email: unknown): asserts email is string {
-  if (typeof email !== "string" || !EMAIL_REGEX.test(email)) {
-    throw new AuthError("Adresse email invalide.", 400);
-  }
-}
-
-function assertValidPassword(password: unknown): asserts password is string {
-  if (typeof password !== "string" || password.length < MIN_PASSWORD_LENGTH) {
-    throw new AuthError(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.`, 400);
   }
 }
 
@@ -57,42 +31,28 @@ function assertValidPhone(phone: unknown): asserts phone is string {
   }
 }
 
-export function hashPassword(password: string) {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
+// Identité vérifiée par Clerk (id et email principal), récupérée via l'API Clerk à partir du
+// token de session — jamais lue depuis le corps de la requête, contrairement au type de
+// compte et aux prénom/nom (pré-remplis côté frontend, modifiables par l'utilisateur).
+export type ClerkIdentity = {
+  clerkId: string;
+  email: string;
+};
 
-export function verifyPassword(password: string, hash: string) {
-  return bcrypt.compare(password, hash);
-}
+// Crée le compte Argos AI d'un utilisateur déjà authentifié par Clerk, au premier passage
+// sur la page d'onboarding. Reprend la logique de l'ancienne inscription : organisation créée
+// avec son admin, partages et invitations en attente rattachés, abonnement en attente.
+export async function completeOnboarding(
+  identity: ClerkIdentity,
+  input: {
+    firstName: unknown;
+    lastName: unknown;
+    accountType: unknown;
+    organizationName: unknown;
+  },
+) {
+  const { firstName, lastName, accountType, organizationName } = input;
 
-export function signAuthToken(userId: string) {
-  return jwt.sign({ sub: userId }, env.auth.jwtSecret, { expiresIn: TOKEN_TTL });
-}
-
-export function verifyAuthToken(token: string): string | null {
-  try {
-    const payload = jwt.verify(token, env.auth.jwtSecret);
-    if (typeof payload === "object" && payload !== null && typeof payload.sub === "string") {
-      return payload.sub;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-export async function signup(input: {
-  email: unknown;
-  password: unknown;
-  firstName: unknown;
-  lastName: unknown;
-  accountType: unknown;
-  organizationName: unknown;
-}) {
-  const { email, password, firstName, lastName, accountType, organizationName } = input;
-
-  assertValidEmail(email);
-  assertValidPassword(password);
   assertNonEmpty(firstName, "Le prénom");
   assertNonEmpty(lastName, "Le nom");
   assertValidAccountType(accountType);
@@ -101,14 +61,17 @@ export async function signup(input: {
     assertNonEmpty(organizationName, "Le nom de l'organisation");
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = identity.email.trim().toLowerCase();
+
+  const existingByClerkId = await prisma.user.findUnique({ where: { clerkId: identity.clerkId } });
+  if (existingByClerkId) {
+    throw new AuthError("Ce compte a déjà été configuré.", 409);
+  }
 
   const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (existing) {
     throw new AuthError("Un compte existe déjà avec cet email.", 409);
   }
-
-  const passwordHash = await hashPassword(password);
 
   const {
     userId: createdUserId,
@@ -118,7 +81,7 @@ export async function signup(input: {
     const user = await tx.user.create({
       data: {
         email: normalizedEmail,
-        passwordHash,
+        clerkId: identity.clerkId,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         accountType,
@@ -185,86 +148,6 @@ export async function signup(input: {
   return prisma.user.findUniqueOrThrow({ where: { id: createdUserId }, include: { membership: true } });
 }
 
-export async function changePassword(userId: string, input: { currentPassword: unknown; newPassword: unknown }) {
-  const { currentPassword, newPassword } = input;
-
-  assertNonEmpty(currentPassword, "Le mot de passe actuel");
-  assertValidPassword(newPassword);
-
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-
-  const currentPasswordMatches = await verifyPassword(currentPassword as string, user.passwordHash);
-  if (!currentPasswordMatches) {
-    throw new AuthError("Mot de passe actuel incorrect.", 401);
-  }
-
-  const passwordHash = await hashPassword(newPassword);
-
-  return prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash },
-    include: { membership: true },
-  });
-}
-
-// Le jeton en clair ne transite que dans le lien de l'email : seul son hash est stocké en
-// base, pour qu'une fuite de la base ne permette pas de réinitialiser un mot de passe.
-function hashResetToken(token: string) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-// Ne révèle jamais si l'email correspond à un compte existant (évite l'énumération de
-// comptes) : appelant et appelée se comportent pareil, qu'un email soit trouvé ou non.
-export async function requestPasswordReset(email: unknown): Promise<{ user: { id: string; firstName: string }; token: string } | null> {
-  assertValidEmail(email);
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (!user) {
-    return null;
-  }
-
-  const token = crypto.randomBytes(32).toString("hex");
-  const tokenHash = hashResetToken(token);
-  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-
-  await prisma.passwordResetToken.create({
-    data: { userId: user.id, tokenHash, expiresAt },
-  });
-
-  return { user: { id: user.id, firstName: user.firstName }, token };
-}
-
-export async function resetPassword(input: { token: unknown; newPassword: unknown }) {
-  const { token, newPassword } = input;
-
-  assertNonEmpty(token, "Le jeton de réinitialisation");
-  assertValidPassword(newPassword);
-
-  const tokenHash = hashResetToken(token as string);
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
-
-  if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
-    throw new AuthError("Ce lien de réinitialisation est invalide ou expiré.", 400);
-  }
-
-  const passwordHash = await hashPassword(newPassword);
-
-  const [user] = await prisma.$transaction([
-    prisma.user.update({
-      where: { id: resetToken.userId },
-      data: { passwordHash },
-      include: { membership: true },
-    }),
-    prisma.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: { usedAt: new Date() },
-    }),
-  ]);
-
-  return user;
-}
-
 export async function updatePhone(userId: string, phone: unknown) {
   // Un numéro vide efface le téléphone enregistré (désactive les SMS pour ce compte).
   if (phone === null || phone === "") {
@@ -276,115 +159,9 @@ export async function updatePhone(userId: string, phone: unknown) {
   return prisma.user.update({ where: { id: userId }, data: { phone }, include: { membership: true } });
 }
 
-export async function login(input: { email: unknown; password: unknown }) {
-  const { email, password } = input;
-
-  assertValidEmail(email);
-  assertNonEmpty(password, "Le mot de passe");
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const user = await prisma.user.findUnique({ where: { email: normalizedEmail }, include: { membership: true } });
-  if (!user) {
-    throw new AuthError("Email ou mot de passe incorrect.", 401);
-  }
-
-  const passwordMatches = await verifyPassword(password as string, user.passwordHash);
-  if (!passwordMatches) {
-    throw new AuthError("Email ou mot de passe incorrect.", 401);
-  }
-
-  return user;
+// Appelé par le webhook Clerk (user.updated) : garde l'email du compte Argos AI aligné sur
+// l'email principal choisi chez Clerk, utilisé pour les notifications et Stripe.
+export async function syncClerkUserEmail(clerkId: string, email: string) {
+  return prisma.user.updateMany({ where: { clerkId }, data: { email: email.trim().toLowerCase() } });
 }
 
-// La connexion Google ne crée jamais de compte : elle se lie uniquement à un compte déjà
-// inscrit par email/mot de passe (avec le même email, vérifié par Google), et se contente
-// ensuite de reconnaître ce compte via son googleId aux connexions suivantes.
-export async function loginWithGoogle(profile: { googleId: string; email: string }) {
-  const existingByGoogleId = await prisma.user.findUnique({
-    where: { googleId: profile.googleId },
-    include: { membership: true },
-  });
-  if (existingByGoogleId) {
-    return existingByGoogleId;
-  }
-
-  const normalizedEmail = profile.email.trim().toLowerCase();
-  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (!existingByEmail) {
-    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
-  }
-
-  return prisma.user.update({
-    where: { id: existingByEmail.id },
-    data: { googleId: profile.googleId },
-    include: { membership: true },
-  });
-}
-
-// Même politique que loginWithGoogle ci-dessus : ne crée jamais de compte, se contente de
-// lier/reconnaître un compte déjà inscrit par email/mot de passe. email peut être absent côté
-// GitLab (compte avec email privé) — dans ce cas, seule la reconnaissance par gitlabId déjà
-// lié fonctionne, la première liaison échoue proprement plutôt que de deviner un compte.
-export async function loginWithGitlab(profile: { gitlabId: number; email: string | null }) {
-  const existingByGitlabId = await prisma.user.findUnique({
-    where: { gitlabId: profile.gitlabId },
-    include: { membership: true },
-  });
-  if (existingByGitlabId) {
-    return existingByGitlabId;
-  }
-
-  if (!profile.email) {
-    throw new AuthError(
-      "Votre compte GitLab n'expose pas d'adresse email publique. Rendez-vous sur gitlab.com > Edit profile > Main settings pour en rendre une publique, puis réessayez.",
-      400
-    );
-  }
-
-  const normalizedEmail = profile.email.trim().toLowerCase();
-  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (!existingByEmail) {
-    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
-  }
-
-  return prisma.user.update({
-    where: { id: existingByEmail.id },
-    data: { gitlabId: profile.gitlabId },
-    include: { membership: true },
-  });
-}
-
-// Même politique que loginWithGitlab ci-dessus : ne crée jamais de compte, se contente de
-// lier/reconnaître un compte déjà inscrit par email/mot de passe. email peut être absent si
-// l'utilisateur n'a aucune adresse vérifiée exposée par l'API GitHub (/user/emails) — dans ce
-// cas, seule la reconnaissance par githubId déjà lié fonctionne, la première liaison échoue
-// proprement plutôt que de deviner un compte.
-export async function loginWithGithub(profile: { githubId: number; email: string | null }) {
-  const existingByGithubId = await prisma.user.findUnique({
-    where: { githubId: profile.githubId },
-    include: { membership: true },
-  });
-  if (existingByGithubId) {
-    return existingByGithubId;
-  }
-
-  if (!profile.email) {
-    throw new AuthError(
-      "Votre compte GitHub n'expose aucune adresse email vérifiée. Ajoutez-en une sur github.com/settings/emails, puis réessayez.",
-      400
-    );
-  }
-
-  const normalizedEmail = profile.email.trim().toLowerCase();
-  const existingByEmail = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (!existingByEmail) {
-    throw new AuthError("Aucun compte associé à cette adresse email. Créez d'abord un compte.", 404);
-  }
-
-  return prisma.user.update({
-    where: { id: existingByEmail.id },
-    data: { githubId: profile.githubId },
-    include: { membership: true },
-  });
-}
