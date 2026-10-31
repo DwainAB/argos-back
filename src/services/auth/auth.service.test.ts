@@ -4,7 +4,7 @@ import { prismaMock, resetPrismaMock } from "../../test/prisma-mock";
 vi.mock("../../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("../billing/subscription.service", () => ({ createPendingSubscription: vi.fn() }));
 
-import { AuthError, completeOnboarding, syncClerkUserEmail, updatePhone } from "./auth.service";
+import { AuthError, completeOnboarding, linkExistingAccount, syncClerkUserEmail, updatePhone } from "./auth.service";
 import { createPendingSubscription } from "../billing/subscription.service";
 
 // Base commune, surchargée au cas par cas selon le test — évite de retaper tous les champs
@@ -163,6 +163,36 @@ describe("updatePhone", () => {
       data: { phone: null },
       include: { membership: true },
     });
+  });
+});
+
+describe("linkExistingAccount", () => {
+  it("relie le compte existant ayant cet email au clerkId", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeUser({ id: "user-ancien", clerkId: null }) as never);
+    prismaMock.user.update.mockResolvedValue({ id: "user-ancien" } as never);
+
+    const linked = await linkExistingAccount("clerk_42", " Test@Example.com");
+
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith({ where: { email: "test@example.com" } });
+    expect(prismaMock.user.update).toHaveBeenCalledWith({
+      where: { id: "user-ancien" },
+      data: { clerkId: "clerk_42" },
+      select: { id: true },
+    });
+    expect(linked).toEqual({ id: "user-ancien" });
+  });
+
+  it("ne reprend jamais un compte déjà relié à un autre compte Clerk", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(makeUser({ clerkId: "clerk_autre" }) as never);
+
+    await expect(linkExistingAccount("clerk_42", "test@example.com")).resolves.toBeNull();
+    expect(prismaMock.user.update).not.toHaveBeenCalled();
+  });
+
+  it("renvoie null si aucun compte n'a cet email", async () => {
+    prismaMock.user.findUnique.mockResolvedValue(null);
+
+    await expect(linkExistingAccount("clerk_42", "inconnu@example.com")).resolves.toBeNull();
   });
 });
 

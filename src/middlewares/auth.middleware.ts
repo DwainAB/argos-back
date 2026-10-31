@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
-import { getAuth } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { prisma } from "../lib/prisma";
+import { linkExistingAccount } from "../services/auth/auth.service";
 
 // Code renvoyé quand l'utilisateur est bien authentifié chez Clerk mais n'a pas encore de
 // compte Argos AI (onboarding pas terminé) — le frontend redirige alors vers /onboarding.
@@ -19,6 +20,13 @@ export function clerkSessionMiddleware(req: Request, res: Response, next: NextFu
   next();
 }
 
+// Email principal du compte Clerk, seulement s'il a été vérifié par Clerk.
+async function findVerifiedPrimaryEmail(clerkUserId: string) {
+  const clerkUser = await clerkClient.users.getUser(clerkUserId);
+  const primaryEmail = clerkUser.primaryEmailAddress;
+  return primaryEmail?.verification?.status === "verified" ? primaryEmail.emailAddress : null;
+}
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const { userId: clerkUserId } = getAuth(req);
 
@@ -27,7 +35,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { clerkId: clerkUserId }, select: { id: true } });
+    let user = await prisma.user.findUnique({ where: { clerkId: clerkUserId }, select: { id: true } });
+
+    if (!user) {
+      const verifiedEmail = await findVerifiedPrimaryEmail(clerkUserId);
+      user = verifiedEmail ? await linkExistingAccount(clerkUserId, verifiedEmail) : null;
+    }
 
     if (!user) {
       return res.status(403).json({ error: "Configuration du compte requise.", code: ONBOARDING_REQUIRED });

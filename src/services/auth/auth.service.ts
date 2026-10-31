@@ -159,6 +159,18 @@ export async function updatePhone(userId: string, phone: unknown) {
   return prisma.user.update({ where: { id: userId }, data: { phone }, include: { membership: true } });
 }
 
+// Comptes créés avant le passage à Clerk : à la première connexion Clerk, le compte Argos AI
+// qui a le même email (vérifié par Clerk) est relié à ce clerkId. Uniquement s'il n'est relié
+// à aucun autre compte Clerk, pour qu'un compte déjà relié ne puisse jamais être repris.
+export async function linkExistingAccount(clerkId: string, verifiedEmail: string) {
+  const user = await prisma.user.findUnique({ where: { email: verifiedEmail.trim().toLowerCase() } });
+  if (!user || user.clerkId) {
+    return null;
+  }
+
+  return prisma.user.update({ where: { id: user.id }, data: { clerkId }, select: { id: true } });
+}
+
 // Appelé par le webhook Clerk (user.updated) : garde l'email du compte Argos AI aligné sur
 // l'email principal choisi chez Clerk, utilisé pour les notifications et Stripe.
 export async function syncClerkUserEmail(clerkId: string, email: string) {

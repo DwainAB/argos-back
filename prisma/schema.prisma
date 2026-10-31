@@ -18,8 +18,9 @@ model User {
   // Identifiant de l'utilisateur chez Clerk (claim "sub" du token de session), qui gère
   // désormais toute l'authentification (email/mot de passe, Google, GitHub, GitLab). Le compte
   // Argos AI n'est créé qu'à la fin de l'onboarding (type de compte, organisation), voir
-  // completeOnboarding (auth.service.ts).
-  clerkId String @unique
+  // completeOnboarding (auth.service.ts). Facultatif pour les comptes créés avant Clerk : ils
+  // sont reliés à leur première connexion par email vérifié, voir linkExistingAccount.
+  clerkId String? @unique
 
   accountType      String  @default("personal")
   organizationName String?
