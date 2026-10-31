@@ -160,6 +160,10 @@ export async function createCheckoutSession(subscriptionId: string) {
     customer: subscription.stripeCustomerId,
     line_items: [{ price: priceIdForPlan(subscription.plan as "solo" | "business"), quantity: 1 }],
     subscription_data: grantsTrial ? { trial_period_days: SOLO_TRIAL_DAYS } : undefined,
+    // Affiche le champ « Ajouter un code promo » sur la page de paiement Stripe (codes créés
+    // dans le dashboard Stripe). La carte reste demandée même si le total tombe à 0 € : sinon
+    // l'essai gratuit Solo pourrait aussi démarrer sans moyen de paiement.
+    allow_promotion_codes: true,
     success_url: `${env.frontendUrl}/dashboard?checkout=success`,
     cancel_url: `${env.frontendUrl}/dashboard/organizations/billing?checkout=cancelled`,
   });
