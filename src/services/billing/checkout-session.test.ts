@@ -5,6 +5,17 @@ import { prismaMock, resetPrismaMock } from "../../test/prisma-mock";
 const sessionsCreate = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/prisma", () => ({ prisma: prismaMock }));
+// Mêmes mocks que subscription.service.test.ts : le vrai service email instancie Resend dès
+// l'import et échoue sans RESEND_API_KEY (cas de la CI).
+vi.mock("../notifications/email.service", () => ({
+  sendPaymentFailedEmail: vi.fn(),
+  sendUsageLimitReachedEmail: vi.fn(),
+  sendUsageLimitWarningEmail: vi.fn(),
+}));
+vi.mock("./log-stream-control.service", () => ({
+  startAllLogStreamsForSubscription: vi.fn(),
+  stopAllLogStreamsForSubscription: vi.fn(),
+}));
 vi.mock("../../config/env", async () => {
   const actual = await vi.importActual<typeof import("../../config/env")>("../../config/env");
   return {
