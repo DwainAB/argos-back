@@ -10,9 +10,8 @@ REST API of **Argos AI**, a SaaS that connects a user's code repositories (GitHu
 
 - **Log collection** — real-time log streaming from Railway (GraphQL subscriptions over `graphql-ws`) and Render, with configurable retention.
 - **AI triage** — logs are classified (error / warning / info), grouped by root cause and explained in plain language. Triage runs on Groq (OpenAI-compatible API); deeper analyses run on OpenAI.
-- **Secret detection** — secrets leaked in logs are detected (pattern matching + AI) and masked before storage.
 - **Alerts & notifications** — alerts per project, sent by email (Resend) and SMS (SMSFactor).
-- **Code analysis** — full repository review (security, performance, architecture) and fix suggestions, with pull/merge request creation on GitHub and GitLab.
+- **Code analysis** — full repository review (security, performance, architecture) and fix suggestions, with pull/merge request creation on GitHub and GitLab. Secrets exposed in the code are detected (pattern matching + AI) and only shown masked.
 - **Integrations** — GitHub App (installation-based access), GitLab OAuth, Railway OAuth, Render API keys (encrypted at rest with AES-256-GCM).
 - **Accounts & organizations** — personal and organization accounts, members, roles, invitations and project sharing.
 - **Billing** — Stripe subscriptions (Solo / Business), webhooks, usage limits and payment grace period.
