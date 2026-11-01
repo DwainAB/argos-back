@@ -7,6 +7,7 @@ vi.mock("../services/providers/railway/railway-project-token.service", () => ({ 
 vi.mock("../services/providers/render/render-api.service", () => ({ fetchLatestDeployment: vi.fn() }));
 vi.mock("../lib/encryption", () => ({ decryptSecret: vi.fn() }));
 vi.mock("../services/logs/log-explanation.service", () => ({ explainLog: vi.fn() }));
+vi.mock("../services/billing/log-stream-control.service", () => ({ stopLogStreamForProject: vi.fn() }));
 vi.mock("../services/organization/project-access.service", () => ({ projectAccessFilter: vi.fn().mockResolvedValue({}) }));
 vi.mock("../services/organization/organization.service", () => ({
   assertCanManageProject: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("../services/activity/activity-log.service", () => ({
 }));
 
 import { logsRouter } from "./logs.route";
+import { stopLogStreamForProject } from "../services/billing/log-stream-control.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { explainLog } from "../services/logs/log-explanation.service";
 
@@ -195,6 +197,7 @@ describe("DELETE /api/projects/:projectId", () => {
 
     expect(res.status).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalled();
+    expect(stopLogStreamForProject).toHaveBeenCalledWith("proj-1");
   });
 });
 

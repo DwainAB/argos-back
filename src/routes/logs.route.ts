@@ -7,6 +7,7 @@ import { explainLog } from "../services/logs/log-explanation.service";
 import { projectAccessFilter } from "../services/organization/project-access.service";
 import { assertCanManageProject, OrganizationError } from "../services/organization/organization.service";
 import { logActivity, getLastActors, ACTIVITY_ACTIONS } from "../services/activity/activity-log.service";
+import { stopLogStreamForProject } from "../services/billing/log-stream-control.service";
 import { logger } from "../lib/logger";
 
 export const logsRouter = Router();
@@ -287,6 +288,9 @@ logsRouter.delete("/api/projects/:projectId", async (req, res) => {
     });
 
     await prisma.project.delete({ where: { id: projectId } });
+
+    // Ferme la connexion aux logs : sinon elle reste ouverte jusqu'au prochain redémarrage.
+    stopLogStreamForProject(projectId);
 
     res.status(204).end();
   } catch (err) {
