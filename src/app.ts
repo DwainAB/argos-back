@@ -29,55 +29,67 @@ import { clerkWebhookRouter } from "./routes/clerk-webhook.route";
 import { notFoundMiddleware } from "./middlewares/not-found.middleware";
 import { authMiddleware } from "./middlewares/auth.middleware";
 
+
 export function createApp() {
   const app = express();
 
+  // Autorise uniquement le frontend d'argos à appeler l'API.
   app.use(cors({ origin: env.frontendUrl, credentials: true }));
 
-  // Montés avant express.json() : Stripe et Clerk ont besoin du corps brut, non parsé, pour vérifier
-  // la signature de la requête (voir stripe-webhook.route.ts, clerk-webhook.route.ts).
+  // Webhooks Stripe et Clerk pour recevoir les notifications avant la lecture du json
   app.use(stripeWebhookRouter);
   app.use(clerkWebhookRouter);
 
+  // Middleware pour parser le JSON
   app.use(express.json());
+  // Cookies : utilisés pour le "state" des connexions OAuth (GitHub, GitLab, Railway).
   app.use(cookieParser());
 
-  // Vérifie le token de session Clerk (en-tête Authorization: Bearer, envoyé par apiFetch
-  // côté frontend) sur chaque requête et le rend lisible via getAuth(req) — ne bloque
-  // jamais à lui seul, le refus d'accès est fait par authMiddleware.
+  // Identifie qui fait la requête
   app.use(clerkMiddleware());
 
+  // GET /health : permet à Railway de vérifier que l'API tourne.
   app.use(healthRouter);
 
-  // Documentation interactive de l'API (OpenAPI), générée à partir d'openapi.yaml —
-  // décrit les endpoints par groupe (auth, projets, logs, alertes, billing, intégrations),
-  // sans middleware d'authentification : accessible publiquement, comme la doc d'une API.
+  // Documentation Swagger publique, générée depuis openapi.yaml.
   const openapiYaml = fs.readFileSync(path.join(__dirname, "..", "openapi.yaml"), "utf-8");
   const openapiDocument = YAML.load(openapiYaml) as Record<string, unknown>;
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
+  // Onboarding et utilisateur courant : chaque route gère son propre contrôle d'accès.
   app.use(authRouter);
 
+  // Retours OAuth GitHub/GitLab : appelés par redirection, sans token, donc publics.
   app.use(githubPublicRouter);
   app.use(gitlabPublicRouter);
 
+  // ⛔ Toutes les routes en dessous exigent un utilisateur connecté avec un compte Argos AI.
   app.use(authMiddleware);
+
+  // Intégrations : hébergeurs (Railway, Render) et dépôts (GitHub, GitLab).
   app.use(railwayIntegrationRouter);
   app.use(renderIntegrationRouter);
   app.use(renderApiKeysRouter);
   app.use(githubConnectionsRouter);
   app.use(gitlabConnectionsRouter);
+
+  // Projets, logs, alertes et analyse de code.
   app.use(projectsRouter);
   app.use(logsRouter);
   app.use(alertsRouter);
   app.use(codeAnalysisRouter);
   app.use(githubIntegrationRouter);
   app.use(gitlabIntegrationRouter);
+
+  // Partage de projets et organisation.
   app.use(projectSharesRouter);
   app.use(organizationRouter);
+
+  // Abonnement Stripe.
   app.use(subscriptionRouter);
   app.use(planChangeRouter);
 
+  // Aucune route n'a répondu : 404 en JSON.
   app.use(notFoundMiddleware);
 
   return app;
